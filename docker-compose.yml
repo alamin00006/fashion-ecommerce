@@ -1,0 +1,68 @@
+name: overview-fashion-local
+
+services:
+  db:
+    image: mysql:8.0
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: wordpress
+      MYSQL_USER: wordpress
+      MYSQL_PASSWORD: wordpress-local
+      MYSQL_ROOT_PASSWORD: root-local-only
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$${MYSQL_ROOT_PASSWORD} --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  wordpress:
+    image: wordpress:6-php8.2-apache
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8081:80"
+    environment:
+      WORDPRESS_DB_HOST: db:3306
+      WORDPRESS_DB_NAME: wordpress
+      WORDPRESS_DB_USER: wordpress
+      WORDPRESS_DB_PASSWORD: wordpress-local
+      WORDPRESS_DEBUG: 1
+    volumes:
+      - wordpress_data:/var/www/html
+      - ./fashion-ecommerce:/var/www/html/wp-content/themes/overview-fashion
+    healthcheck:
+      test: ["CMD", "php", "-r", "exit(@file_get_contents('http://127.0.0.1/wp-login.php') !== false ? 0 : 1);"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  wordpress-setup:
+    image: wordpress:6-php8.2-apache
+    restart: "no"
+    depends_on:
+      wordpress:
+        condition: service_healthy
+      db:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "/tmp/setup-local.sh"]
+    environment:
+      WORDPRESS_DB_HOST: db:3306
+      WORDPRESS_DB_NAME: wordpress
+      WORDPRESS_DB_USER: wordpress
+      WORDPRESS_DB_PASSWORD: wordpress-local
+    volumes:
+      - wordpress_data:/var/www/html
+      - ./fashion-ecommerce:/var/www/html/wp-content/themes/overview-fashion
+      - ./docker/setup-local.sh:/tmp/setup-local.sh:ro
+      - ./docker/install-local.php:/tmp/install-local.php:ro
+      - ./docker/seed-local-products.php:/tmp/seed-products.php:ro
+      - ./docker/woocommerce.zip:/tmp/woocommerce.zip:ro
+      - ./docker/wordpress-core.zip:/tmp/wordpress-core.zip:ro
+
+volumes:
+  mysql_data:
+  wordpress_data:
