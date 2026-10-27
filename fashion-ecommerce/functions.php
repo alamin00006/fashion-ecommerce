@@ -19,12 +19,19 @@ add_action('after_setup_theme', 'overview_fashion_setup');
 
 function overview_fashion_assets() {
     wp_enqueue_style('overview-fashion-fonts', 'https://fonts.googleapis.com/css2?family=Cinzel:wght@700&family=Manrope:wght@400;500;600;700;800&display=swap', array(), null);
-    wp_enqueue_style('overview-fashion-style', get_stylesheet_uri(), array(), wp_get_theme()->get('Version'));
-    wp_enqueue_script('overview-fashion-script', get_template_directory_uri() . '/assets/theme.js', array(), wp_get_theme()->get('Version'), true);
+    $style_path = get_stylesheet_directory() . '/style.css';
+    $script_path = get_template_directory() . '/assets/theme.js';
+    wp_enqueue_style('overview-fashion-style', get_stylesheet_uri(), array(), file_exists($style_path) ? filemtime($style_path) : wp_get_theme()->get('Version'));
+    wp_enqueue_script('overview-fashion-script', get_template_directory_uri() . '/assets/theme.js', array(), file_exists($script_path) ? filemtime($script_path) : wp_get_theme()->get('Version'), true);
 }
 add_action('wp_enqueue_scripts', 'overview_fashion_assets');
 
 function overview_fashion_logo() {
+    $sajal_logo_path = get_template_directory() . '/assets/sajal-logo.jpeg';
+    if (file_exists($sajal_logo_path)) {
+        echo '<a class="custom-logo-link of-sajal-logo" href="' . esc_url(home_url('/')) . '" rel="home"><img src="' . esc_url(get_template_directory_uri() . '/assets/sajal-logo.jpeg') . '" alt="' . esc_attr__('SAJAL — Explore your true style', 'overview-fashion') . '"></a>';
+        return;
+    }
     if (has_custom_logo()) {
         the_custom_logo();
     } else {
@@ -158,17 +165,18 @@ function overview_fashion_customize_register($wp_customize) {
         $wp_customize->add_setting('of_' . $key, array('default' => $data[1], 'sanitize_callback' => $key === 'email' ? 'sanitize_email' : ($key === 'phone' || $key === 'address' ? 'sanitize_text_field' : 'esc_url_raw')));
         $wp_customize->add_control('of_' . $key, array('label' => $data[0], 'section' => 'overview_fashion_contact', 'type' => 'text'));
     }
-    $home_categories = array('' => __('All Products', 'overview-fashion'));
-    foreach (overview_fashion_categories() as $category) { $home_categories[$category->slug] = $category->name; }
-    $wp_customize->add_setting('of_home_category', array('default' => '', 'sanitize_callback' => 'sanitize_title'));
-    $wp_customize->add_control('of_home_category', array('label' => __('Homepage product category', 'overview-fashion'), 'section' => 'static_front_page', 'type' => 'select', 'choices' => $home_categories));
     $wp_customize->add_setting('of_cover_banner', array('default' => '', 'sanitize_callback' => 'esc_url_raw'));
-    $wp_customize->add_control(new WP_Customize_Image_Control($wp_customize, 'of_cover_banner', array('label' => __('Homepage cover banner', 'overview-fashion'), 'section' => 'static_front_page')));
+    $wp_customize->add_control(new WP_Customize_Image_Control($wp_customize, 'of_cover_banner', array('label' => __('Homepage banner image', 'overview-fashion'), 'section' => 'static_front_page')));
 }
 add_action('customize_register', 'overview_fashion_customize_register');
 
 // Use this theme's responsive product grid while keeping WooCommerce's product data and cart behavior.
 add_filter('loop_shop_columns', function () { return 4; });
+
+function overview_fashion_remove_woocommerce_sidebar() {
+    remove_action('woocommerce_sidebar', 'woocommerce_get_sidebar', 10);
+}
+add_action('wp', 'overview_fashion_remove_woocommerce_sidebar');
 
 function overview_fashion_cart_fragments($fragments) {
     ob_start(); ?><span class="of-count" data-of-cart-count><?php echo esc_html(overview_fashion_cart_count()); ?></span><?php
@@ -202,7 +210,9 @@ function overview_fashion_mini_cart_contents() {
             echo '<li class="of-cart-item"><a class="of-cart-item-image" href="' . esc_url(get_permalink($product->get_id())) . '">' . $image . '</a><div class="of-cart-item-info">';
             echo '<a class="of-cart-item-name" href="' . esc_url(get_permalink($product->get_id())) . '">' . esc_html($product->get_name()) . '</a>';
             echo '<span class="of-size-pill">' . esc_html($size) . '</span><span class="of-cart-unit">' . wp_kses_post(wc_price((float) $product->get_price())) . ' × ' . esc_html($qty) . ' pc</span>';
-            echo '<div class="of-cart-item-bottom"><strong>' . wp_kses_post(wc_price((float) $product->get_price() * $qty)) . '</strong><a class="of-remove-item" href="' . esc_url(wc_get_cart_remove_url($cart_key)) . '" aria-label="' . esc_attr__('Remove item', 'overview-fashion') . '"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3m-9 0 1 13h10l1-13M10 11v5m4-5v5"></path></svg></a><div class="of-qty-control"><a href="' . esc_url($minus) . '" aria-label="' . esc_attr__('Decrease quantity', 'overview-fashion') . '">−</a><span>' . esc_html($qty) . '</span><a href="' . esc_url($plus) . '" aria-label="' . esc_attr__('Increase quantity', 'overview-fashion') . '">+</a></div></div>';
+            $of_qty_nonce = wp_create_nonce('overview_fashion_cart_quantity');
+            $of_ajax_url = admin_url('admin-ajax.php');
+            echo '<div class="of-cart-item-bottom"><strong>' . wp_kses_post(wc_price((float) $product->get_price() * $qty)) . '</strong><a class="of-remove-item" href="' . esc_url(wc_get_cart_remove_url($cart_key)) . '" aria-label="' . esc_attr__('Remove item', 'overview-fashion') . '"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3m-9 0 1 13h10l1-13M10 11v5m4-5v5"></path></svg></a><div class="of-qty-control"><a href="' . esc_url($minus) . '" data-of-cart-quantity data-cart-key="' . esc_attr($cart_key) . '" data-quantity="' . esc_attr(max(0, $qty - 1)) . '" data-nonce="' . esc_attr($of_qty_nonce) . '" data-ajax-url="' . esc_url($of_ajax_url) . '" aria-label="' . esc_attr__('Decrease quantity', 'overview-fashion') . '">−</a><span>' . esc_html($qty) . '</span><a href="' . esc_url($plus) . '" data-of-cart-quantity data-cart-key="' . esc_attr($cart_key) . '" data-quantity="' . esc_attr($qty + 1) . '" data-nonce="' . esc_attr($of_qty_nonce) . '" data-ajax-url="' . esc_url($of_ajax_url) . '" aria-label="' . esc_attr__('Increase quantity', 'overview-fashion') . '">+</a></div></div>';
             echo '</div></li>';
         }
         echo '</ul>';
@@ -226,3 +236,18 @@ function overview_fashion_handle_cart_quantity() {
     exit;
 }
 add_action('template_redirect', 'overview_fashion_handle_cart_quantity', 1);
+
+function overview_fashion_ajax_cart_quantity() {
+    check_ajax_referer('overview_fashion_cart_quantity', 'nonce');
+    if (!function_exists('WC') || !WC()->cart) { wp_send_json_error(array('message' => 'Cart is unavailable.'), 400); }
+    $key = isset($_POST['cart_key']) ? sanitize_text_field(wp_unslash($_POST['cart_key'])) : '';
+    $quantity = isset($_POST['quantity']) ? absint(wp_unslash($_POST['quantity'])) : 0;
+    if (!$key || !isset(WC()->cart->get_cart()[$key])) { wp_send_json_error(array('message' => 'Cart item not found.'), 404); }
+    WC()->cart->set_quantity($key, $quantity, true);
+    $fragments = apply_filters('woocommerce_add_to_cart_fragments', array());
+    ob_start(); ?><strong class="of-cart-total-value"><?php echo wp_kses_post(WC()->cart->get_total()); ?></strong><?php
+    $fragments['.of-cart-total-value'] = ob_get_clean();
+    wp_send_json_success(array('fragments' => $fragments));
+}
+add_action('wp_ajax_overview_fashion_cart_quantity', 'overview_fashion_ajax_cart_quantity');
+add_action('wp_ajax_nopriv_overview_fashion_cart_quantity', 'overview_fashion_ajax_cart_quantity');

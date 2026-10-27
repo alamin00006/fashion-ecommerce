@@ -27,6 +27,12 @@ foreach ($preview_categories as $slug => $name) {
     $term = term_exists($slug, 'product_cat');
     if (!$term) {
         $term = wp_insert_term($name, 'product_cat', array('slug' => $slug));
+    } else {
+        $term_id = (int) (is_array($term) ? $term['term_id'] : $term);
+        $existing_term = get_term($term_id, 'product_cat');
+        if ($existing_term && !is_wp_error($existing_term) && $existing_term->name !== $name) {
+            $term = wp_update_term($term_id, 'product_cat', array('name' => $name));
+        }
     }
     if (!is_wp_error($term)) {
         $category_ids[$slug] = (int) (is_array($term) ? $term['term_id'] : $term);
@@ -34,38 +40,49 @@ foreach ($preview_categories as $slug => $name) {
 }
 
 $preview_products = array(
-    array('sku' => 'OF-LOCAL-POLO', 'name' => 'Old Money Knit Polo', 'slug' => 'local-old-money-knit-polo', 'category' => 'old-money-polo', 'price' => '850', 'regular' => '999', 'image' => 'banner-1.jpg', 'description' => 'Local preview product. Premium knit polo in a timeless style.'),
-    array('sku' => 'OF-LOCAL-ZIP', 'name' => 'Ralph lauren zipper polo Navy', 'slug' => 'local-cable-knit-zipper-polo', 'category' => 'rl-zipper', 'price' => '1190', 'regular' => '1990', 'image' => 'banner-2.jpg', 'description' => 'Local preview product. Soft cable knit with a neat quarter zip.'),
-    array('sku' => 'OF-LOCAL-ZIP-BLACK', 'name' => 'Ralph Lauren zipper polo black', 'slug' => 'local-zipper-polo-black', 'category' => 'rl-zipper', 'price' => '1190', 'regular' => '1990', 'image' => 'banner-2.jpg', 'description' => 'Local preview product. Cable knit quarter zip in black.'),
-    array('sku' => 'OF-LOCAL-ZIP-CREAM', 'name' => 'Ralph Lauren zipper polo cream', 'slug' => 'local-zipper-polo-cream', 'category' => 'rl-zipper', 'price' => '1190', 'regular' => '1990', 'image' => 'banner-2.jpg', 'description' => 'Local preview product. Cable knit quarter zip in cream.'),
-    array('sku' => 'OF-LOCAL-ZIP-MERON', 'name' => 'Ralph Lauren zipper polo Meron', 'slug' => 'local-zipper-polo-meron', 'category' => 'rl-zipper', 'price' => '1190', 'regular' => '1990', 'image' => 'banner-2.jpg', 'description' => 'Local preview product. Cable knit quarter zip in maroon.'),
-    array('sku' => 'OF-LOCAL-ZIP-COFFEE', 'name' => 'Ralph Lauren zipper polo Coffee', 'slug' => 'local-zipper-polo-coffee', 'category' => 'rl-zipper', 'price' => '1190', 'regular' => '1990', 'image' => 'banner-2.jpg', 'description' => 'Local preview product. Cable knit quarter zip in coffee.'),
-    array('sku' => 'OF-LOCAL-ZIP-ASH', 'name' => 'Ralph lauren zipper polo ash', 'slug' => 'local-zipper-polo-ash', 'category' => 'rl-zipper', 'price' => '1190', 'regular' => '1990', 'image' => 'banner-2.jpg', 'description' => 'Local preview product. Cable knit quarter zip in ash.'),
-    array('sku' => 'OF-LOCAL-SHOES', 'name' => 'Suede Everyday Shoes', 'slug' => 'local-suede-everyday-shoes', 'category' => 'shoes', 'price' => '1490', 'regular' => '1790', 'image' => 'banner-3.jpg', 'description' => 'Local preview product. Lightweight suede shoes for everyday wear.'),
+    array('sku' => 'OF-LOCAL-POLO', 'name' => 'Old Money Knit Polo', 'slug' => 'local-old-money-knit-polo', 'category' => 'old-money-polo', 'price' => '850', 'regular' => '999', 'image' => 'products/old-money-polo.jpg', 'description' => 'Local preview product. Premium knit polo in a timeless style.'),
+    array('sku' => 'OF-LOCAL-ZIP', 'name' => 'Ralph lauren zipper polo Navy', 'slug' => 'local-cable-knit-zipper-polo', 'category' => 'rl-zipper', 'price' => '1190', 'regular' => '1990', 'image' => 'products/ralph-navy.png', 'description' => 'Local preview product. Soft cable knit with a neat quarter zip.'),
+    array('sku' => 'OF-LOCAL-ZIP-BLACK', 'name' => 'Ralph Lauren zipper polo black', 'slug' => 'local-zipper-polo-black', 'category' => 'rl-zipper', 'price' => '1190', 'regular' => '1990', 'image' => 'products/ralph-black.png', 'description' => 'Local preview product. Cable knit quarter zip in black.'),
+    array('sku' => 'OF-LOCAL-ZIP-CREAM', 'name' => 'Ralph Lauren zipper polo cream', 'slug' => 'local-zipper-polo-cream', 'category' => 'rl-zipper', 'price' => '1190', 'regular' => '1990', 'image' => 'products/ralph-cream.png', 'description' => 'Local preview product. Cable knit quarter zip in cream.'),
+    array('sku' => 'OF-LOCAL-ZIP-MERON', 'name' => 'Ralph Lauren zipper polo Meron', 'slug' => 'local-zipper-polo-meron', 'category' => 'rl-zipper', 'price' => '1190', 'regular' => '1990', 'image' => 'products/ralph-red.png', 'description' => 'Local preview product. Cable knit quarter zip in maroon.'),
+    array('sku' => 'OF-LOCAL-ZIP-COFFEE', 'name' => 'Ralph Lauren zipper polo Coffee', 'slug' => 'local-zipper-polo-coffee', 'category' => 'rl-zipper', 'price' => '1190', 'regular' => '1990', 'image' => 'products/ralph-ash.png', 'description' => 'Local preview product. Cable knit quarter zip in coffee.'),
+    array('sku' => 'OF-LOCAL-ZIP-ASH', 'name' => 'Ralph lauren zipper polo ash', 'slug' => 'local-zipper-polo-ash', 'category' => 'rl-zipper', 'price' => '1190', 'regular' => '1990', 'image' => 'products/ralph-offwhite.png', 'description' => 'Local preview product. Cable knit quarter zip in ash.'),
+    array('sku' => 'OF-LOCAL-SHOES', 'name' => 'Suede Everyday Shoes', 'slug' => 'local-suede-everyday-shoes', 'category' => 'shoes', 'price' => '1490', 'regular' => '1790', 'image' => 'products/shoes-product.jpg', 'description' => 'Local preview product. Lightweight suede shoes for everyday wear.'),
 );
 
 $theme_assets = WP_CONTENT_DIR . '/themes/overview-fashion/assets/';
-foreach ($preview_products as $row) {
-    if (wc_get_product_id_by_sku($row['sku'])) {
-        continue;
-    }
-
+foreach ($preview_products as $position => $row) {
+    $existing_product_id = wc_get_product_id_by_sku($row['sku']);
     $image_id = 0;
     $image_path = $theme_assets . $row['image'];
     if (file_exists($image_path)) {
-        $upload = wp_upload_bits(basename($image_path), null, file_get_contents($image_path));
-        if (empty($upload['error'])) {
-            $attachment_id = wp_insert_attachment(array(
-                'post_mime_type' => 'image/jpeg',
-                'post_title' => sanitize_file_name(pathinfo($image_path, PATHINFO_FILENAME)),
-                'post_status' => 'inherit',
-            ), $upload['file']);
-            if (!is_wp_error($attachment_id)) {
-                $metadata = wp_generate_attachment_metadata($attachment_id, $upload['file']);
-                wp_update_attachment_metadata($attachment_id, $metadata);
-                $image_id = (int) $attachment_id;
+        $image_title = sanitize_file_name(pathinfo($image_path, PATHINFO_FILENAME));
+        $existing_image = get_posts(array('post_type' => 'attachment', 'post_status' => 'inherit', 'title' => $image_title, 'posts_per_page' => 1, 'fields' => 'ids'));
+        if ($existing_image) {
+            $image_id = (int) $existing_image[0];
+        } else {
+            $upload = wp_upload_bits(basename($image_path), null, file_get_contents($image_path));
+            if (empty($upload['error'])) {
+                $mime = wp_check_filetype($upload['file']);
+                $attachment_id = wp_insert_attachment(array(
+                    'post_mime_type' => $mime['type'],
+                    'post_title' => $image_title,
+                    'post_status' => 'inherit',
+                ), $upload['file']);
+                if (!is_wp_error($attachment_id)) {
+                    $metadata = wp_generate_attachment_metadata($attachment_id, $upload['file']);
+                    wp_update_attachment_metadata($attachment_id, $metadata);
+                    $image_id = (int) $attachment_id;
+                }
             }
         }
+    }
+
+    if ($existing_product_id) {
+        $existing_product = wc_get_product($existing_product_id);
+        if ($image_id) { set_post_thumbnail($existing_product_id, $image_id); }
+        if ($existing_product) { $existing_product->set_menu_order($position); $existing_product->save(); }
+        continue;
     }
 
     $product = new WC_Product_Simple();
@@ -77,6 +94,7 @@ foreach ($preview_products as $row) {
     $product->set_regular_price($row['regular']);
     $product->set_sale_price($row['price']);
     $product->set_description($row['description']);
+    $product->set_menu_order($position);
     if (!empty($category_ids[$row['category']])) {
         $product->set_category_ids(array($category_ids[$row['category']]));
     }

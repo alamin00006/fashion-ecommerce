@@ -30,3 +30,7 @@ The shop, cart, checkout, and account pages should be created through WooCommerc
 - `front-page.php`: home storefront sections.
 - `header.php` / `footer.php`: responsive storefront shell.
 - `assets/`: local campaign images and small interaction script.
+
+## Icon attribution
+
+- The mobile shopping bag icon is Font Awesome Free `bag-shopping`, licensed under CC BY 4.0: https://github.com/FortAwesome/Font-Awesome/blob/6.x/svgs/solid/bag-shopping.svg
