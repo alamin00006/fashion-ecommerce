@@ -251,3 +251,83 @@ function overview_fashion_ajax_cart_quantity() {
 }
 add_action('wp_ajax_overview_fashion_cart_quantity', 'overview_fashion_ajax_cart_quantity');
 add_action('wp_ajax_nopriv_overview_fashion_cart_quantity', 'overview_fashion_ajax_cart_quantity');
+
+/** Simplify checkout for Bangladesh orders and keep location fields available to WooCommerce. */
+function overview_fashion_checkout_fields($fields) {
+    $fields['billing']['billing_first_name']['label'] = __('Name', 'overview-fashion');
+    $fields['billing']['billing_first_name']['placeholder'] = __('Enter your name', 'overview-fashion');
+    $fields['billing']['billing_first_name']['priority'] = 10;
+    $fields['billing']['billing_first_name']['required'] = true;
+    $fields['billing']['billing_first_name']['autocomplete'] = 'name';
+    $fields['billing']['billing_phone']['label'] = __('Phone', 'overview-fashion');
+    $fields['billing']['billing_phone']['placeholder'] = __('01XXXXXXXXX', 'overview-fashion');
+    $fields['billing']['billing_phone']['priority'] = 20;
+    $fields['billing']['billing_phone']['required'] = true;
+    $fields['billing']['billing_phone']['custom_attributes'] = array('maxlength' => '11', 'inputmode' => 'numeric', 'pattern' => '01[3-9][0-9]{8}', 'autocomplete' => 'tel');
+    $fields['billing']['billing_address_1']['label'] = __('Address', 'overview-fashion');
+    $fields['billing']['billing_address_1']['placeholder'] = __('House, road, area and district', 'overview-fashion');
+    $fields['billing']['billing_address_1']['priority'] = 30;
+    $fields['billing']['billing_address_1']['required'] = true;
+    $fields['billing']['billing_address_1']['custom_attributes'] = array('maxlength' => '255');
+    foreach (array('billing_last_name', 'billing_company', 'billing_address_2', 'billing_city', 'billing_state', 'billing_postcode', 'billing_email') as $field) {
+        unset($fields['billing'][$field]);
+    }
+    if (isset($fields['billing']['billing_country'])) {
+        $fields['billing']['billing_country']['type'] = 'hidden';
+        $fields['billing']['billing_country']['default'] = 'BD';
+        $fields['billing']['billing_country']['required'] = false;
+    }
+    return $fields;
+}
+add_filter('woocommerce_checkout_fields', 'overview_fashion_checkout_fields', 20);
+
+function overview_fashion_delivery_charge($cart) {
+    if (is_admin() && !defined('DOING_AJAX')) { return; }
+    if (!$cart || $cart->is_empty() || !function_exists('WC') || !WC()->session) { return; }
+    $checkout_ajax = isset($_GET['wc-ajax']) && sanitize_key(wp_unslash($_GET['wc-ajax'])) === 'update_order_review';
+    if ((!function_exists('is_checkout') || !is_checkout()) && !$checkout_ajax) { return; }
+    $area = WC()->session->get('of_delivery_area', 'dhaka');
+    if (isset($_POST['post_data'])) {
+        parse_str(wp_unslash($_POST['post_data']), $posted);
+        if (isset($posted['of_delivery_area'])) { $area = sanitize_key($posted['of_delivery_area']); }
+    } elseif (isset($_POST['of_delivery_area'])) {
+        $area = sanitize_key(wp_unslash($_POST['of_delivery_area']));
+    }
+    if (!in_array($area, array('dhaka', 'outside'), true)) { $area = 'dhaka'; }
+    WC()->session->set('of_delivery_area', $area);
+    $cart->add_fee(__('Delivery Charge', 'overview-fashion'), $area === 'outside' ? 130 : 80, false);
+}
+add_action('woocommerce_cart_calculate_fees', 'overview_fashion_delivery_charge', 20);
+
+function overview_fashion_save_delivery_area($order, $data) {
+    $area = isset($_POST['of_delivery_area']) ? sanitize_key(wp_unslash($_POST['of_delivery_area'])) : (function_exists('WC') && WC()->session ? WC()->session->get('of_delivery_area', 'dhaka') : 'dhaka');
+    if (!in_array($area, array('dhaka', 'outside'), true)) { $area = 'dhaka'; }
+    $order->update_meta_data('_of_delivery_area', $area === 'outside' ? __('Outside Dhaka', 'overview-fashion') : __('Dhaka', 'overview-fashion'));
+}
+add_action('woocommerce_checkout_create_order', 'overview_fashion_save_delivery_area', 20, 2);
+
+function overview_fashion_validate_delivery_area($data, $errors) {
+    $phone = isset($data['billing_phone']) ? preg_replace('/\D+/', '', (string) $data['billing_phone']) : '';
+    if (!preg_match('/^01[3-9][0-9]{8}$/', $phone)) {
+        $errors->add('billing_phone', __('Enter a valid 11-digit Bangladesh mobile number.', 'overview-fashion'));
+    }
+    $area = isset($_POST['of_delivery_area']) ? sanitize_key(wp_unslash($_POST['of_delivery_area'])) : '';
+    if (!in_array($area, array('dhaka', 'outside'), true)) {
+        $errors->add('of_delivery_area', __('Please choose a delivery area.', 'overview-fashion'));
+    }
+}
+add_action('woocommerce_after_checkout_validation', 'overview_fashion_validate_delivery_area', 10, 2);
+
+/** Render the classic WooCommerce checkout so the theme's custom checkout template is used. */
+function overview_fashion_classic_checkout_content($content) {
+    if (!function_exists('is_checkout') || !is_checkout() || is_wc_endpoint_url() || !is_main_query() || !in_the_loop()) { return $content; }
+    if (has_shortcode($content, 'woocommerce_checkout')) { return $content; }
+    return do_shortcode('[woocommerce_checkout]');
+}
+add_filter('the_content', 'overview_fashion_classic_checkout_content', 9);
+
+function overview_fashion_checkout_price_decimals($decimals) {
+    $checkout_ajax = isset($_GET['wc-ajax']) && sanitize_key(wp_unslash($_GET['wc-ajax'])) === 'update_order_review';
+    return (function_exists('is_checkout') && is_checkout()) || $checkout_ajax ? 0 : $decimals;
+}
+add_filter('wc_get_price_decimals', 'overview_fashion_checkout_price_decimals');

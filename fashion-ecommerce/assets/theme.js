@@ -63,6 +63,42 @@
   if (window.jQuery) {
     window.jQuery(document.body).on('added_to_cart', () => cartBar?.classList.add('is-visible'));
     window.jQuery(document.body).on('removed_from_cart wc_fragments_refreshed', syncCartBar);
+
+    const $body = window.jQuery(document.body);
+    const deliveryRadios = document.querySelectorAll('input[name="of_delivery_area"]');
+    [['#billing_phone', 11], ['#billing_address_1', 255]].forEach(([selector, max]) => {
+      const input = document.querySelector(selector);
+      const label = input?.closest('.form-row')?.querySelector('label');
+      if (!input || !label) return;
+      const counter = document.createElement('span');
+      counter.className = 'of-field-counter';
+      label.append(counter);
+      const updateCounter = () => { counter.textContent = `${input.value.length}/${max}`; };
+      input.addEventListener('input', updateCounter);
+      updateCounter();
+    });
+    const syncDeliverySelection = () => {
+      document.querySelectorAll('.of-delivery-option').forEach((option) => {
+        option.classList.toggle('is-selected', Boolean(option.querySelector('input[name="of_delivery_area"]:checked')));
+      });
+    };
+    const syncCheckoutTotals = () => {
+      const subtotal = document.querySelector('#order_review .cart-subtotal td');
+      const delivery = document.querySelector('#order_review tr.fee td');
+      const total = document.querySelector('#order_review .order-total td');
+      const subtotalTarget = document.querySelector('[data-of-checkout-subtotal]');
+      const deliveryTarget = document.querySelector('[data-of-checkout-delivery]');
+      const totalTarget = document.querySelector('[data-of-checkout-total]');
+      if (subtotal && subtotalTarget) subtotalTarget.innerHTML = subtotal.innerHTML;
+      if (delivery && deliveryTarget) deliveryTarget.innerHTML = delivery.innerHTML;
+      if (total && totalTarget) totalTarget.innerHTML = total.innerHTML;
+    };
+    deliveryRadios.forEach((radio) => radio.addEventListener('change', () => {
+      syncDeliverySelection();
+      $body.trigger('update_checkout');
+    }));
+    $body.on('updated_checkout', syncCheckoutTotals);
+    syncCheckoutTotals();
   }
   document.addEventListener('click', async (event) => {
     const control = event.target.closest('[data-of-cart-quantity]');
@@ -94,6 +130,7 @@
         document.querySelectorAll(selector).forEach((current) => current.replaceWith(replacement.cloneNode(true)));
       });
       syncCartBar();
+      if (control.closest('.of-checkout-right') && window.jQuery) window.jQuery(document.body).trigger('update_checkout');
       if (window.jQuery) window.jQuery(document.body).trigger('wc_fragments_refreshed');
     } catch (error) {
       console.error(error);
