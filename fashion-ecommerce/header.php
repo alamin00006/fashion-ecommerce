@@ -20,7 +20,7 @@ $home_url = home_url('/');
         elseif (is_front_page()) { $of_active_category = ''; }
         elseif (function_exists('is_product') && is_product()) { $of_product_categories = wc_get_product_cat_ids(get_the_ID()); if ($of_product_categories) { $of_product_category = get_term($of_product_categories[0], 'product_cat'); if ($of_product_category && !is_wp_error($of_product_category)) { $of_active_category = $of_product_category->slug; } } }
       ?>
-      <a href="<?php echo esc_url($home_url); ?>" class="<?php echo (function_exists('is_shop') && is_shop()) || (is_front_page() && !$of_active_category) ? 'current' : ''; ?>"><span class="of-category-dot">All</span><?php esc_html_e('All', 'overview-fashion'); ?></a>
+      <a href="<?php echo esc_url($home_url); ?>" class="<?php echo (function_exists('is_shop') && is_shop()) || (is_front_page() && !$of_active_category) ? 'current' : ''; ?>"><span class="of-category-dot of-category-nav-all"><svg viewBox="0 0 40 40" aria-hidden="true"><path d="M10 9a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v22a2 2 0 0 1-2 2h-4a2 2 0 0 1-2-2V9Zm13 1.2a2 2 0 0 1 2.8 0l3 3a2 2 0 0 1 0 2.8L19 26l-5.8 1.2L14.4 21l8.6-10.8ZM23 25l4-4 5 5a2 2 0 0 1-1.4 3.4H18l5-4.4Z"/></svg></span><?php esc_html_e('All', 'overview-fashion'); ?></a>
       <?php foreach (overview_fashion_categories() as $of_cat) : ?>
         <a href="<?php echo esc_url(get_term_link($of_cat)); ?>" class="<?php echo (function_exists('is_product_category') && is_product_category($of_cat->slug)) || $of_active_category === $of_cat->slug ? 'current' : ''; ?>">
           <?php
@@ -42,7 +42,6 @@ $home_url = home_url('/');
       <?php if (function_exists('is_product') && is_product()) : ?><a class="of-back-link" href="<?php echo esc_url(home_url('/')); ?>" aria-label="<?php esc_attr_e('Back to home', 'overview-fashion'); ?>"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 12H3m0 0 7-7m-7 7 7 7"/></svg></a><?php endif; ?>
       <button class="of-mobile-menu" type="button" aria-label="<?php esc_attr_e('Open menu', 'overview-fashion'); ?>" data-of-menu-open><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M3 12h12M3 18h18"/></svg></button>
       <div class="of-social-links">
-        <a class="of-social-icon of-whatsapp" href="<?php echo esc_url(get_theme_mod('of_whatsapp', 'https://wa.me/')); ?>" target="_blank" rel="noopener" aria-label="WhatsApp"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2a9.7 9.7 0 0 0-8.3 14.7L2.4 22l5.5-1.4A9.8 9.8 0 1 0 12 2Zm0 17.7a7.9 7.9 0 0 1-4-1.1l-.3-.2-3.2.8.9-3.1-.2-.3A7.9 7.9 0 1 1 12 19.7Zm4.3-5.9c-.2-.1-1.4-.7-1.6-.8-.2-.1-.4-.1-.5.1-.2.2-.6.8-.8.9-.1.2-.3.2-.5.1-.2-.1-1-.4-1.9-1.2-.7-.6-1.2-1.4-1.3-1.6-.1-.2 0-.4.1-.5l.4-.4.2-.4c.1-.2 0-.3 0-.4l-.7-1.7c-.2-.5-.4-.4-.5-.4h-.5c-.2 0-.4.1-.6.3-.2.2-.8.8-.8 1.9s.8 2.2.9 2.4c.1.2 1.6 2.4 3.8 3.3.5.2.9.4 1.2.4.5.2 1 .1 1.4.1.4-.1 1.4-.6 1.6-1.1.2-.6.2-1 .1-1.1-.1-.1-.3-.2-.5-.3Z"/></svg></a>
         <a class="of-social-icon of-messenger" href="<?php echo esc_url(get_theme_mod('of_messenger', 'https://m.me/')); ?>" target="_blank" rel="noopener" aria-label="Messenger"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2C6.4 2 2 6.1 2 11.3c0 2.9 1.4 5.5 3.7 7.2V22l3.4-1.9c.9.2 1.9.4 2.9.4 5.6 0 10-4.1 10-9.2S17.6 2 12 2Zm1 12.4-2.6-2.8-5 2.8 5.5-5.8 2.7 2.8 4.9-2.8-5.5 5.8Z"/></svg></a>
       </div>
       <div class="of-header-logo"><?php overview_fashion_logo(); ?></div>
@@ -66,6 +65,7 @@ $home_url = home_url('/');
           <input type="hidden" name="post_type" value="product">
           <button type="button" data-of-search-close aria-label="<?php esc_attr_e('Close search', 'overview-fashion'); ?>">×</button>
         </form>
+        <div class="of-search-results" data-of-search-results aria-live="polite" hidden></div>
       </div>
     </div>
     <div class="of-mobile-drawer" data-of-drawer>

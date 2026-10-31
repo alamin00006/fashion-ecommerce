@@ -26,7 +26,12 @@ function overview_fashion_assets() {
     wp_enqueue_script('overview-fashion-script', get_template_directory_uri() . '/assets/theme.js', array(), file_exists($script_path) ? filemtime($script_path) : wp_get_theme()->get('Version'), true);
     wp_localize_script('overview-fashion-script', 'overviewFashionCart', array(
         'ajaxUrl' => admin_url('admin-ajax.php'),
+        'checkoutUrl' => function_exists('wc_get_checkout_url') ? wc_get_checkout_url() : home_url('/'),
         'addNonce' => wp_create_nonce('overview_fashion_add_to_cart'),
+        'searchNonce' => wp_create_nonce('overview_fashion_product_search'),
+        'orderLabel' => __('এটি অর্ডার করুন', 'overview-fashion'),
+        'addedLabel' => __('আরও কিনুন', 'overview-fashion'),
+        'orderConfirmLabel' => __('অর্ডার কনফার্ম করুন', 'overview-fashion'),
     ));
 }
 add_action('wp_enqueue_scripts', 'overview_fashion_assets');
@@ -130,16 +135,29 @@ function overview_fashion_product_size_field() {
     echo '</div></fieldset>';
 }
 add_action('woocommerce_before_add_to_cart_button', 'overview_fashion_product_size_field', 5);
+function overview_fashion_mobile_order_note() {
+    echo '<p class="of-mobile-order-note">' . esc_html__('অর্ডার কনফার্ম করতে নিচের “অর্ডার কনফার্ম করুন” বাটনে ক্লিক করুন।', 'overview-fashion') . '</p>';
+}
+add_action('woocommerce_after_add_to_cart_button', 'overview_fashion_mobile_order_note');
 add_action('woocommerce_before_add_to_cart_button', function () {
     global $product;
     overview_fashion_single_product_cart_controls($product);
 }, 15);
 
+function overview_fashion_cart_item_size($cart_item) {
+    $size = !empty($cart_item['of_size']) ? (string) $cart_item['of_size'] : '';
+    foreach (($cart_item['variation'] ?? array()) as $attribute => $value) {
+        if (strpos($attribute, 'size') !== false && $value !== '') { return strtoupper((string) $value); }
+    }
+    return $size ?: 'M';
+}
+
 function overview_fashion_single_add_to_cart_text($label, $product = null) {
+    $selected_size = isset($_REQUEST['of_size']) ? sanitize_text_field(wp_unslash($_REQUEST['of_size'])) : 'M';
     if (!$product instanceof WC_Product) { return __('এটি অর্ডার করুন', 'overview-fashion'); }
     if (function_exists('WC') && WC()->cart) {
         foreach (WC()->cart->get_cart() as $cart_item) {
-            if ((int) $cart_item['product_id'] === (int) $product->get_id()) {
+            if ((int) $cart_item['product_id'] === (int) $product->get_id() && overview_fashion_cart_item_size($cart_item) === $selected_size) {
                 return __('আরও কিনুন', 'overview-fashion');
             }
         }
@@ -290,10 +308,11 @@ function overview_fashion_single_product_rating($product) {
 
 function overview_fashion_single_product_cart_controls($product) {
     if (!$product instanceof WC_Product || !function_exists('WC') || !WC()->cart) { return; }
+    $selected_size = isset($_REQUEST['of_size']) ? sanitize_text_field(wp_unslash($_REQUEST['of_size'])) : 'M';
     $cart_item = null;
     $cart_key = '';
     foreach (WC()->cart->get_cart() as $key => $item) {
-        if ((int) $item['product_id'] === (int) $product->get_id()) { $cart_item = $item; $cart_key = $key; break; }
+        if ((int) $item['product_id'] === (int) $product->get_id() && overview_fashion_cart_item_size($item) === $selected_size) { $cart_item = $item; $cart_key = $key; break; }
     }
     if (!$cart_item) { echo '<div data-of-single-product-cart-controls></div>'; return; }
     $quantity = (int) $cart_item['quantity'];
@@ -408,8 +427,9 @@ function overview_fashion_ajax_add_product_to_cart() {
     foreach ($_POST as $key => $value) {
         if (strpos((string) $key, 'attribute_') === 0) { $variation[sanitize_text_field($key)] = sanitize_text_field(wp_unslash($value)); }
     }
-    $cart_item_data = apply_filters('woocommerce_add_cart_item_data', array(), $product_id);
-    $added = WC()->cart->add_to_cart($product_id, $quantity, $variation_id, $variation, $cart_item_data);
+    // WooCommerce applies `woocommerce_add_cart_item_data` inside add_to_cart().
+    // Passing pre-filtered data here would run extension callbacks twice.
+    $added = WC()->cart->add_to_cart($product_id, $quantity, $variation_id, $variation, array());
     if (!$added) { wp_send_json_error(array('message' => __('Could not add this product to the cart.', 'overview-fashion')), 400); }
     WC()->cart->calculate_totals();
     $fragments = apply_filters('woocommerce_add_to_cart_fragments', array());
@@ -417,6 +437,51 @@ function overview_fashion_ajax_add_product_to_cart() {
 }
 add_action('wp_ajax_overview_fashion_add_product_to_cart', 'overview_fashion_ajax_add_product_to_cart');
 add_action('wp_ajax_nopriv_overview_fashion_add_product_to_cart', 'overview_fashion_ajax_add_product_to_cart');
+
+function overview_fashion_ajax_refresh_product_cart_controls() {
+    if (!check_ajax_referer('overview_fashion_add_to_cart', 'nonce', false)) {
+        wp_send_json_error(array('message' => __('Please refresh the page and try again.', 'overview-fashion')), 403);
+    }
+    $product_id = isset($_POST['product_id']) ? absint(wp_unslash($_POST['product_id'])) : 0;
+    $product = wc_get_product($product_id);
+    if (!$product) { wp_send_json_error(array('message' => __('Product not found.', 'overview-fashion')), 404); }
+    ob_start();
+    overview_fashion_single_product_cart_controls($product);
+    wp_send_json_success(array('html' => ob_get_clean()));
+}
+add_action('wp_ajax_overview_fashion_refresh_product_cart_controls', 'overview_fashion_ajax_refresh_product_cart_controls');
+add_action('wp_ajax_nopriv_overview_fashion_refresh_product_cart_controls', 'overview_fashion_ajax_refresh_product_cart_controls');
+
+function overview_fashion_ajax_product_search() {
+    if (!check_ajax_referer('overview_fashion_product_search', 'nonce', false)) {
+        wp_send_json_error(array('message' => __('Please refresh the page and try again.', 'overview-fashion')), 403);
+    }
+    if (!function_exists('wc_get_products')) {
+        wp_send_json_success(array('items' => array()));
+    }
+    $query = isset($_POST['query']) ? sanitize_text_field(wp_unslash($_POST['query'])) : '';
+    if (strlen($query) < 2) {
+        wp_send_json_success(array('items' => array()));
+    }
+    $products = wc_get_products(array('status' => 'publish', 'limit' => 6, 'orderby' => 'relevance', 'order' => 'DESC', 's' => $query));
+    $items = array();
+    foreach ($products as $product) {
+        if (!$product instanceof WC_Product) { continue; }
+        $image_id = $product->get_image_id();
+        $image = $image_id ? wp_get_attachment_image_src($image_id, 'woocommerce_thumbnail') : false;
+        $terms = get_the_terms($product->get_id(), 'product_cat');
+        $items[] = array(
+            'url' => esc_url_raw(get_permalink($product->get_id())),
+            'image' => $image ? esc_url_raw($image[0]) : esc_url_raw(wc_placeholder_img_src('woocommerce_thumbnail')),
+            'name' => $product->get_name(),
+            'price' => wp_kses_post($product->get_price_html()),
+            'category' => !is_wp_error($terms) && !empty($terms) ? $terms[0]->name : '',
+        );
+    }
+    wp_send_json_success(array('items' => $items));
+}
+add_action('wp_ajax_overview_fashion_product_search', 'overview_fashion_ajax_product_search');
+add_action('wp_ajax_nopriv_overview_fashion_product_search', 'overview_fashion_ajax_product_search');
 
 // Use this theme's responsive product grid while keeping WooCommerce's product data and cart behavior.
 add_filter('loop_shop_columns', function () { return 4; });
@@ -490,7 +555,7 @@ function overview_fashion_mini_cart_contents() {
             $qty = (int) $cart_item['quantity'];
             $minus = overview_fashion_cart_quantity_url($cart_key, max(0, $qty - 1));
             $plus = overview_fashion_cart_quantity_url($cart_key, $qty + 1);
-            echo '<li class="of-cart-item"><a class="of-cart-item-image" href="' . esc_url(get_permalink($product->get_id())) . '">' . $image . '</a><div class="of-cart-item-info">';
+            echo '<li class="of-cart-item" data-product-id="' . esc_attr($cart_item['product_id']) . '" data-product-size="' . esc_attr($size) . '"><a class="of-cart-item-image" href="' . esc_url(get_permalink($product->get_id())) . '">' . $image . '</a><div class="of-cart-item-info">';
             echo '<a class="of-cart-item-name" href="' . esc_url(get_permalink($product->get_id())) . '">' . esc_html($product->get_name()) . '</a>';
             echo '<span class="of-size-pill">' . esc_html($size) . '</span><span class="of-cart-unit">' . wp_kses_post(wc_price((float) $product->get_price())) . ' × ' . esc_html($qty) . ' pc</span>';
             $of_qty_nonce = wp_create_nonce('overview_fashion_cart_quantity');
@@ -534,6 +599,19 @@ function overview_fashion_ajax_cart_quantity() {
 }
 add_action('wp_ajax_overview_fashion_cart_quantity', 'overview_fashion_ajax_cart_quantity');
 add_action('wp_ajax_nopriv_overview_fashion_cart_quantity', 'overview_fashion_ajax_cart_quantity');
+
+function overview_fashion_checkout_privacy_notice($text, $type = '') {
+    return $type === 'checkout' ? '' : $text;
+}
+add_filter('woocommerce_get_privacy_policy_text', 'overview_fashion_checkout_privacy_notice', 10, 2);
+
+function overview_fashion_cod_description($description, $gateway_id) {
+    if ($gateway_id === 'cod') {
+        return '১০০% নিশ্চিত হয়ে অর্ডার করুন। আপনার একটি ফেইক অর্ডারে হালাল ব্যবসায় লোকসান হয়।';
+    }
+    return $description;
+}
+add_filter('woocommerce_gateway_description', 'overview_fashion_cod_description', 10, 2);
 
 /** Simplify checkout for Bangladesh orders and keep location fields available to WooCommerce. */
 function overview_fashion_checkout_fields($fields) {
@@ -581,6 +659,9 @@ function overview_fashion_delivery_charge($cart) {
     $cart->add_fee(__('Delivery Charge', 'overview-fashion'), $area === 'outside' ? 130 : 80, false);
 }
 add_action('woocommerce_cart_calculate_fees', 'overview_fashion_delivery_charge', 20);
+
+/** Delivery is charged by the checkout's Dhaka/outside-Dhaka selector, not WooCommerce shipping zones. */
+add_filter('woocommerce_cart_needs_shipping', '__return_false', 100);
 
 /** Ignore the obsolete flat-rate left by the original local preview setup. */
 function overview_fashion_remove_preview_shipping_rate($rates, $package) {

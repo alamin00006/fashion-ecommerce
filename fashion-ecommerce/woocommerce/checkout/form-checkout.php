@@ -22,11 +22,11 @@ do_action('woocommerce_before_checkout_form', $checkout);
           <h2><span aria-hidden="true">&#128666;</span> <?php esc_html_e('Delivery Charge', 'overview-fashion'); ?></h2>
           <label class="of-delivery-option <?php echo $delivery_area === 'dhaka' ? 'is-selected' : ''; ?>">
             <input type="radio" name="of_delivery_area" value="dhaka" <?php checked($delivery_area, 'dhaka'); ?>>
-            <span class="of-delivery-check" aria-hidden="true"></span><span><?php esc_html_e('Dhaka', 'overview-fashion'); ?> <small>(2 days)</small></span><strong><?php echo wp_kses_post(wc_price(80)); ?></strong>
+            <span class="of-delivery-check" aria-hidden="true"></span><span><?php esc_html_e('ঢাকার ভিতরে', 'overview-fashion'); ?></span><strong><?php echo wp_kses_post(wc_price(80)); ?></strong>
           </label>
           <label class="of-delivery-option <?php echo $delivery_area === 'outside' ? 'is-selected' : ''; ?>">
             <input type="radio" name="of_delivery_area" value="outside" <?php checked($delivery_area, 'outside'); ?>>
-            <span class="of-delivery-check" aria-hidden="true"></span><span><?php esc_html_e('Outside Dhaka', 'overview-fashion'); ?> <small>(2–3 days)</small></span><strong><?php echo wp_kses_post(wc_price(130)); ?></strong>
+            <span class="of-delivery-check" aria-hidden="true"></span><span><?php esc_html_e('ঢাকার বাহিরে', 'overview-fashion'); ?> <small>(সারা দেশে)</small></span><strong><?php echo wp_kses_post(wc_price(130)); ?></strong>
           </label>
         </section>
         <section class="of-checkout-card of-checkout-totals" data-of-checkout-totals>
