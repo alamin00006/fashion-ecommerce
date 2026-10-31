@@ -6,8 +6,6 @@ while (have_posts()) : the_post();
     $product = wc_get_product(get_the_ID());
     if (!$product) { continue; }
     $categories = wc_get_product_category_list($product->get_id(), ', ');
-    $related_ids = wc_get_related_products($product->get_id(), 16);
-    $related_products = $related_ids ? wc_get_products(array('include' => $related_ids, 'limit' => 16, 'status' => 'publish')) : array();
     do_action('woocommerce_before_single_product');
     ?>
     <article id="product-<?php the_ID(); ?>" <?php wc_product_class('of-product-detail', $product); ?>>
@@ -15,16 +13,15 @@ while (have_posts()) : the_post();
         <div class="of-detail-gallery"><?php do_action('woocommerce_before_single_product_summary'); ?></div>
         <section class="of-detail-summary summary entry-summary">
           <?php woocommerce_template_single_title(); ?>
-          <?php if ($categories) : ?><div class="of-detail-category"><?php echo wp_kses_post($categories); ?></div><?php endif; ?>
-          <?php woocommerce_template_single_rating(); ?>
+          <div class="of-detail-meta"><?php if ($categories) : ?><div class="of-detail-category"><?php echo wp_kses_post($categories); ?></div><?php endif; ?><?php overview_fashion_single_product_rating($product); ?></div>
           <?php woocommerce_template_single_price(); ?>
-          <?php if ($product->is_on_sale()) : $regular = (float) $product->get_regular_price(); $current = (float) $product->get_sale_price(); if ($regular > 0 && $current > 0) : ?><span class="of-detail-discount">-<?php echo esc_html((int) floor((($regular - $current) / $regular) * 100)); ?>%</span><?php endif; endif; ?>
           <?php woocommerce_template_single_add_to_cart(); ?>
+          <ul class="of-product-promises" aria-label="<?php esc_attr_e('Shopping benefits', 'overview-fashion'); ?>"><li><span aria-hidden="true">✓</span><?php esc_html_e('Cash on delivery', 'overview-fashion'); ?></li><li><span aria-hidden="true">↗</span><?php esc_html_e('Delivery across Bangladesh', 'overview-fashion'); ?></li><li><span aria-hidden="true">↺</span><?php esc_html_e('Easy exchange', 'overview-fashion'); ?></li></ul>
         </section>
       </div>
       <section class="of-detail-description"><h2><?php esc_html_e('Description', 'overview-fashion'); ?></h2><div><?php if ($product->get_description()) { echo wp_kses_post(wpautop($product->get_description())); } else { echo '<p>' . esc_html__('Please contact us for product size and care details.', 'overview-fashion') . '</p>'; } ?></div></section>
-      <?php if ($related_products) : ?><section class="of-similar-products"><h2><?php esc_html_e('Similar Products', 'overview-fashion'); ?></h2><div class="of-products"><?php foreach ($related_products as $related_product) { overview_fashion_product_card($related_product); } ?></div></section><?php endif; ?>
-      <p class="of-back-home"><a href="<?php echo esc_url(home_url('/')); ?>">← <?php esc_html_e('Back to Home', 'overview-fashion'); ?></a></p>
+      <?php overview_fashion_render_product_recommendations($product); ?>
+      <p class="of-back-home"><a href="<?php echo esc_url(home_url('/')); ?>"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 12H3m0 0 7-7m-7 7 7 7"/></svg><?php esc_html_e('Back to Home', 'overview-fashion'); ?></a></p>
     </article>
     <?php do_action('woocommerce_after_single_product'); ?>
 <?php endwhile;

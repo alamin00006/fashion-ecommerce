@@ -127,9 +127,4 @@ if (!$preview_zone) {
     $preview_zone->add_location('BD', 'country');
     $preview_zone->save();
 }
-if (!$preview_zone->get_shipping_methods(false)) {
-    $method_id = $preview_zone->add_shipping_method('flat_rate');
-    update_option('woocommerce_flat_rate_' . $method_id . '_settings', array('title' => 'Bangladesh delivery', 'tax_status' => 'none', 'cost' => '100'));
-}
-
 echo "Added local sample products and enabled cash on delivery.\n";

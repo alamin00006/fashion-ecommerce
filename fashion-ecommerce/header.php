@@ -39,7 +39,7 @@ $home_url = home_url('/');
   </aside>
   <div class="of-main">
     <header class="of-header">
-      <?php if (function_exists('is_product') && is_product()) : ?><a class="of-back-link" href="<?php echo esc_url(home_url('/')); ?>" aria-label="<?php esc_attr_e('Back to home', 'overview-fashion'); ?>">←</a><?php endif; ?>
+      <?php if (function_exists('is_product') && is_product()) : ?><a class="of-back-link" href="<?php echo esc_url(home_url('/')); ?>" aria-label="<?php esc_attr_e('Back to home', 'overview-fashion'); ?>"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 12H3m0 0 7-7m-7 7 7 7"/></svg></a><?php endif; ?>
       <button class="of-mobile-menu" type="button" aria-label="<?php esc_attr_e('Open menu', 'overview-fashion'); ?>" data-of-menu-open><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M3 12h12M3 18h18"/></svg></button>
       <div class="of-social-links">
         <a class="of-social-icon of-whatsapp" href="<?php echo esc_url(get_theme_mod('of_whatsapp', 'https://wa.me/')); ?>" target="_blank" rel="noopener" aria-label="WhatsApp"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2a9.7 9.7 0 0 0-8.3 14.7L2.4 22l5.5-1.4A9.8 9.8 0 1 0 12 2Zm0 17.7a7.9 7.9 0 0 1-4-1.1l-.3-.2-3.2.8.9-3.1-.2-.3A7.9 7.9 0 1 1 12 19.7Zm4.3-5.9c-.2-.1-1.4-.7-1.6-.8-.2-.1-.4-.1-.5.1-.2.2-.6.8-.8.9-.1.2-.3.2-.5.1-.2-.1-1-.4-1.9-1.2-.7-.6-1.2-1.4-1.3-1.6-.1-.2 0-.4.1-.5l.4-.4.2-.4c.1-.2 0-.3 0-.4l-.7-1.7c-.2-.5-.4-.4-.5-.4h-.5c-.2 0-.4.1-.6.3-.2.2-.8.8-.8 1.9s.8 2.2.9 2.4c.1.2 1.6 2.4 3.8 3.3.5.2.9.4 1.2.4.5.2 1 .1 1.4.1.4-.1 1.4-.6 1.6-1.1.2-.6.2-1 .1-1.1-.1-.1-.3-.2-.5-.3Z"/></svg></a>
@@ -70,14 +70,14 @@ $home_url = home_url('/');
     </div>
     <div class="of-mobile-drawer" data-of-drawer>
       <div class="of-drawer-panel"><button type="button" data-of-menu-close class="of-drawer-close" aria-label="<?php esc_attr_e('Close menu', 'overview-fashion'); ?>">×</button>
-      <nav class="of-category-nav"><a href="<?php echo esc_url($home_url); ?>"><?php esc_html_e('All products', 'overview-fashion'); ?></a>
-        <?php foreach (overview_fashion_categories() as $of_cat) : ?><a href="<?php echo esc_url(get_term_link($of_cat)); ?>"><?php echo esc_html($of_cat->name); ?></a><?php endforeach; ?>
+      <nav class="of-category-nav"><div class="of-drawer-brand"><a href="<?php echo esc_url($home_url); ?>"><?php esc_html_e('SAJAL ONLINE', 'overview-fashion'); ?></a></div><a href="<?php echo esc_url($home_url); ?>" class="<?php echo (function_exists('is_shop') && is_shop()) || (is_front_page() && !$of_active_category) ? 'current' : ''; ?>"><span class="of-category-dot">All</span><span><?php esc_html_e('All', 'overview-fashion'); ?></span></a>
+        <?php foreach (overview_fashion_categories() as $of_cat) : ?><a href="<?php echo esc_url(get_term_link($of_cat)); ?>" class="<?php echo (function_exists('is_product_category') && is_product_category($of_cat->slug)) || $of_active_category === $of_cat->slug ? 'current' : ''; ?>"><?php $of_mobile_thumb = get_term_meta($of_cat->term_id, 'thumbnail_id', true); if (!$of_mobile_thumb && function_exists('wc_get_products')) { $of_mobile_products = wc_get_products(array('status' => 'publish', 'limit' => 1, 'category' => array($of_cat->slug))); if ($of_mobile_products) { $of_mobile_thumb = $of_mobile_products[0]->get_image_id(); } } if ($of_mobile_thumb) { echo wp_get_attachment_image($of_mobile_thumb, 'thumbnail', false, array('loading' => 'lazy')); } else { ?><span class="of-category-dot"><?php echo esc_html(substr($of_cat->name, 0, 1)); ?></span><?php } ?><span><?php echo esc_html($of_cat->name); ?></span></a><?php endforeach; ?>
       </nav></div><button class="of-drawer-backdrop" data-of-menu-close aria-label="<?php esc_attr_e('Close menu', 'overview-fashion'); ?>"></button>
     </div>
     <?php if (function_exists('WC')) : ?>
       <div class="of-cart-drawer" data-of-cart-drawer>
         <button class="of-cart-backdrop" data-of-cart-close aria-label="<?php esc_attr_e('Close cart', 'overview-fashion'); ?>"></button>
-        <section class="of-cart-drawer-panel" aria-label="<?php esc_attr_e('Your cart', 'overview-fashion'); ?>"><div class="of-cart-drawer-heading"><strong><?php esc_html_e('Your cart', 'overview-fashion'); ?></strong><button type="button" data-of-cart-close aria-label="<?php esc_attr_e('Close cart', 'overview-fashion'); ?>">×</button></div><?php overview_fashion_mini_cart_contents(); ?><div class="of-cart-drawer-footer"><strong><?php esc_html_e('TOTAL:', 'overview-fashion'); ?> <?php echo wp_kses_post(WC()->cart->get_total()); ?></strong><a class="of-button" href="<?php echo esc_url(wc_get_checkout_url()); ?>"><?php esc_html_e('Checkout', 'overview-fashion'); ?> →</a></div></section>
+        <section class="of-cart-drawer-panel" aria-label="<?php esc_attr_e('Your cart', 'overview-fashion'); ?>"><div class="of-cart-drawer-heading"><strong class="of-cart-drawer-title"><?php esc_html_e('Your cart', 'overview-fashion'); ?></strong><?php overview_fashion_cart_drawer_counts(); ?><button type="button" data-of-cart-close aria-label="<?php esc_attr_e('Close cart', 'overview-fashion'); ?>">×</button></div><?php overview_fashion_mini_cart_contents(); overview_fashion_cart_footer(true); ?></section>
       </div>
     <?php endif; ?>
     <main class="of-content">

@@ -14,6 +14,10 @@ This is a classic, installable WordPress theme based on the Overview Fashion Rea
 
 The shop, cart, checkout, and account pages should be created through WooCommerce's setup wizard. Delivery rates and checkout validation belong to WooCommerce configuration or a shipping/checkout extension; the React prototype's browser-only order storage is replaced by WooCommerce's persistent order handling.
 
+## Customize colors
+
+Go to **Appearance → Customize → Theme Colors → Primary theme color** to change the main accent color. The storefront and checkout background tints update from that setting.
+
 ## Included
 
 - Responsive shop header, category navigation, search, and mobile menu.

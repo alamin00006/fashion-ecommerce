@@ -17,12 +17,17 @@ function overview_fashion_setup() {
 }
 add_action('after_setup_theme', 'overview_fashion_setup');
 
+
 function overview_fashion_assets() {
     wp_enqueue_style('overview-fashion-fonts', 'https://fonts.googleapis.com/css2?family=Cinzel:wght@700&family=Manrope:wght@400;500;600;700;800&display=swap', array(), null);
     $style_path = get_stylesheet_directory() . '/style.css';
     $script_path = get_template_directory() . '/assets/theme.js';
     wp_enqueue_style('overview-fashion-style', get_stylesheet_uri(), array(), file_exists($style_path) ? filemtime($style_path) : wp_get_theme()->get('Version'));
     wp_enqueue_script('overview-fashion-script', get_template_directory_uri() . '/assets/theme.js', array(), file_exists($script_path) ? filemtime($script_path) : wp_get_theme()->get('Version'), true);
+    wp_localize_script('overview-fashion-script', 'overviewFashionCart', array(
+        'ajaxUrl' => admin_url('admin-ajax.php'),
+        'addNonce' => wp_create_nonce('overview_fashion_add_to_cart'),
+    ));
 }
 add_action('wp_enqueue_scripts', 'overview_fashion_assets');
 
@@ -58,8 +63,59 @@ function overview_fashion_categories($limit = 0) {
     return $terms;
 }
 
+function overview_fashion_home_categories() {
+    $categories = overview_fashion_categories();
+    $default_position = array();
+    foreach ($categories as $position => $category) { $default_position[$category->term_id] = $position; }
+    $categories = array_values(array_filter($categories, function ($category) {
+        return get_term_meta($category->term_id, '_of_home_category_visible', true) !== 'no';
+    }));
+    usort($categories, function ($a, $b) use ($default_position) {
+        $a_order = get_term_meta($a->term_id, '_of_home_category_order', true);
+        $b_order = get_term_meta($b->term_id, '_of_home_category_order', true);
+        $a_order = is_numeric($a_order) ? (int) $a_order : (($default_position[$a->term_id] ?? 0) + 1) * 10;
+        $b_order = is_numeric($b_order) ? (int) $b_order : (($default_position[$b->term_id] ?? 0) + 1) * 10;
+        return $a_order === $b_order ? strcasecmp($a->name, $b->name) : $a_order - $b_order;
+    });
+    return $categories;
+}
+
+function overview_fashion_category_home_fields($term = null) {
+    $is_edit = $term instanceof WP_Term;
+    $visible = !$is_edit || get_term_meta($term->term_id, '_of_home_category_visible', true) !== 'no';
+    $order = $is_edit ? get_term_meta($term->term_id, '_of_home_category_order', true) : '';
+    wp_nonce_field('of_home_category_settings', 'of_home_category_nonce');
+    if ($is_edit) { echo '<tr class="form-field"><th scope="row"><label for="of-home-category-visible">' . esc_html__('Homepage section', 'overview-fashion') . '</label></th><td>'; }
+    else { echo '<div class="form-field">'; }
+    echo '<label><input id="of-home-category-visible" type="checkbox" name="of_home_category_visible" value="1" ' . checked($visible, true, false) . '> ' . esc_html__('Show this category on the homepage', 'overview-fashion') . '</label>';
+    if ($is_edit) { echo '<p class="description">' . esc_html__('Uncheck to hide this category section on the homepage. It will remain available in the category menu.', 'overview-fashion') . '</p></td></tr><tr class="form-field"><th scope="row"><label for="of-home-category-order">' . esc_html__('Homepage order', 'overview-fashion') . '</label></th><td>'; }
+    else { echo '</div><div class="form-field"><label for="of-home-category-order">' . esc_html__('Homepage order', 'overview-fashion') . '</label>'; }
+    echo '<input id="of-home-category-order" type="number" min="0" step="1" name="of_home_category_order" value="' . esc_attr($order) . '" placeholder="' . esc_attr__('Automatic', 'overview-fashion') . '">';
+    if ($is_edit) { echo '<p class="description">' . esc_html__('Use a smaller number to show this category earlier. Leave blank to use the default order.', 'overview-fashion') . '</p></td></tr>'; }
+    else { echo '<p class="description">' . esc_html__('Use a smaller number to show this category earlier. Leave blank to use the default order.', 'overview-fashion') . '</p></div>'; }
+}
+add_action('product_cat_add_form_fields', 'overview_fashion_category_home_fields');
+add_action('product_cat_edit_form_fields', 'overview_fashion_category_home_fields');
+
+function overview_fashion_save_category_home_fields($term_id) {
+    if (!current_user_can('manage_product_terms') || empty($_POST['of_home_category_nonce']) || !wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['of_home_category_nonce'])), 'of_home_category_settings')) { return; }
+    update_term_meta($term_id, '_of_home_category_visible', isset($_POST['of_home_category_visible']) ? 'yes' : 'no');
+    $order = isset($_POST['of_home_category_order']) ? trim((string) wp_unslash($_POST['of_home_category_order'])) : '';
+    if ($order === '') { delete_term_meta($term_id, '_of_home_category_order'); }
+    else { update_term_meta($term_id, '_of_home_category_order', absint($order)); }
+}
+add_action('created_product_cat', 'overview_fashion_save_category_home_fields');
+add_action('edited_product_cat', 'overview_fashion_save_category_home_fields');
+
 function overview_fashion_cart_count() {
     return function_exists('WC') && WC()->cart ? WC()->cart->get_cart_contents_count() : 0;
+}
+
+function overview_fashion_cart_drawer_counts() {
+    $cart = function_exists('WC') && WC()->cart ? WC()->cart : null;
+    $items = $cart ? count($cart->get_cart()) : 0;
+    $quantity = $cart ? $cart->get_cart_contents_count() : 0;
+    echo '<span class="of-cart-drawer-counts" data-of-cart-drawer-counts>' . esc_html__('Items:', 'overview-fashion') . ' <strong>' . esc_html($items) . '</strong> &nbsp; ' . esc_html__('Quantity:', 'overview-fashion') . ' <strong>' . esc_html($quantity) . '</strong></span>';
 }
 
 function overview_fashion_product_size_field() {
@@ -74,17 +130,76 @@ function overview_fashion_product_size_field() {
     echo '</div></fieldset>';
 }
 add_action('woocommerce_before_add_to_cart_button', 'overview_fashion_product_size_field', 5);
+add_action('woocommerce_before_add_to_cart_button', function () {
+    global $product;
+    overview_fashion_single_product_cart_controls($product);
+}, 15);
+
+function overview_fashion_single_add_to_cart_text($label, $product = null) {
+    if (!$product instanceof WC_Product) { return __('এটি অর্ডার করুন', 'overview-fashion'); }
+    if (function_exists('WC') && WC()->cart) {
+        foreach (WC()->cart->get_cart() as $cart_item) {
+            if ((int) $cart_item['product_id'] === (int) $product->get_id()) {
+                return __('আরও কিনুন', 'overview-fashion');
+            }
+        }
+    }
+    return __('এটি অর্ডার করুন', 'overview-fashion');
+}
+add_filter('woocommerce_product_single_add_to_cart_text', 'overview_fashion_single_add_to_cart_text', 10, 2);
+
+function overview_fashion_add_new_product_admin_field() {
+    echo '<div class="options_group">';
+    woocommerce_wp_checkbox(array(
+        'id' => '_of_is_new_product',
+        'label' => __('Show in New Products section', 'overview-fashion'),
+        'description' => __('Display this product in the homepage New Products section.', 'overview-fashion'),
+    ));
+    echo '</div>';
+}
+add_action('woocommerce_product_options_general_product_data', 'overview_fashion_add_new_product_admin_field');
+
+function overview_fashion_save_new_product_admin_field($product) {
+    $is_new_product = isset($_POST['_of_is_new_product']) && wc_clean(wp_unslash($_POST['_of_is_new_product'])) === '1';
+    $product->update_meta_data('_of_is_new_product', $is_new_product ? 'yes' : 'no');
+}
+add_action('woocommerce_admin_process_product_object', 'overview_fashion_save_new_product_admin_field');
 
 function overview_fashion_add_size_to_cart_item($cart_item_data, $product_id) {
     if (!isset($_POST['of_size'])) { return $cart_item_data; }
     $size = sanitize_text_field(wp_unslash($_POST['of_size']));
     if (in_array($size, array('M', 'L', 'XL'), true)) {
         $cart_item_data['of_size'] = $size;
-        $cart_item_data['of_size_key'] = wp_hash($size . '|' . wp_rand());
     }
     return $cart_item_data;
 }
 add_filter('woocommerce_add_cart_item_data', 'overview_fashion_add_size_to_cart_item', 10, 2);
+
+/** Merge cart rows created by older versions, which assigned a random key to every size. */
+function overview_fashion_merge_duplicate_cart_lines($cart) {
+    if (!$cart instanceof WC_Cart) { return; }
+    $groups = array();
+    foreach ($cart->get_cart() as $cart_key => $item) {
+        $identity = $item;
+        foreach (array('key', 'data', 'quantity', 'line_tax_data', 'line_subtotal', 'line_subtotal_tax', 'line_total', 'line_tax', 'of_size_key') as $field) {
+            unset($identity[$field]);
+        }
+        $fingerprint = md5(wp_json_encode($identity));
+        if (!isset($groups[$fingerprint])) { $groups[$fingerprint] = array('keys' => array(), 'quantity' => 0); }
+        $groups[$fingerprint]['keys'][] = $cart_key;
+        $groups[$fingerprint]['quantity'] += (int) $item['quantity'];
+    }
+    $changed = false;
+    foreach ($groups as $group) {
+        if (count($group['keys']) < 2) { continue; }
+        $keep_key = array_shift($group['keys']);
+        $cart->set_quantity($keep_key, $group['quantity'], false);
+        foreach ($group['keys'] as $duplicate_key) { $cart->remove_cart_item($duplicate_key); }
+        $changed = true;
+    }
+    if ($changed) { $cart->calculate_totals(); }
+}
+add_action('woocommerce_cart_loaded_from_session', 'overview_fashion_merge_duplicate_cart_lines', 20, 1);
 
 function overview_fashion_show_cart_size($item_data, $cart_item) {
     if (!empty($cart_item['of_size'])) { $item_data[] = array('key' => __('Size', 'overview-fashion'), 'value' => $cart_item['of_size']); }
@@ -112,10 +227,25 @@ function overview_fashion_product_card($product) {
     echo '<a class="of-product-image" href="' . esc_url(get_permalink($product->get_id())) . '">' . $image . '</a>';
     echo '<h3><a href="' . esc_url(get_permalink($product->get_id())) . '">' . esc_html($product->get_name()) . '</a></h3>';
     echo '<p class="of-price">' . wp_kses_post($product->get_price_html()) . '</p>';
-    $button_class = 'button product_type_' . sanitize_html_class($product->get_type()) . ' add_to_cart_button';
-    if ($product->supports('ajax_add_to_cart')) { $button_class .= ' ajax_add_to_cart'; }
-    echo '<a href="' . esc_url($product->add_to_cart_url()) . '" data-quantity="1" data-product_id="' . esc_attr($product->get_id()) . '" data-product_sku="' . esc_attr($product->get_sku()) . '" aria-label="' . esc_attr($product->add_to_cart_description()) . '" rel="nofollow" class="' . esc_attr($button_class) . '">' . esc_html($product->add_to_cart_text()) . '</a>';
+    // This card button opens the product page; it must not trigger WooCommerce's AJAX cart handler.
+    $button_class = 'button of-order-product-button';
+    echo '<a href="' . esc_url(get_permalink($product->get_id())) . '" aria-label="' . esc_attr(sprintf(__('%s অর্ডার করুন', 'overview-fashion'), $product->get_name())) . '" class="' . esc_attr($button_class) . '">' . esc_html__('এটি অর্ডার করুন', 'overview-fashion') . '</a>';
     echo '</article>';
+}
+
+function overview_fashion_render_product_recommendations($product) {
+    if (!$product instanceof WC_Product) { return; }
+    $product_id = $product->get_id();
+    $related_ids = wc_get_related_products($product_id, 8, array());
+    $related = $related_ids ? wc_get_products(array('include' => $related_ids, 'orderby' => 'include', 'limit' => 8, 'status' => 'publish')) : array();
+    $excluded_ids = array_values(array_unique(array_merge(array($product_id), $related_ids)));
+    $latest = wc_get_products(array('status' => 'publish', 'limit' => 8, 'orderby' => 'date', 'order' => 'DESC', 'exclude' => $excluded_ids));
+
+    $recommendations = array_merge($related, $latest);
+    if (!$recommendations) { return; }
+    echo '<section class="of-similar-products of-recommendation-section"><h2>' . esc_html__('Similar Products', 'overview-fashion') . '<span class="of-similar-ornament" aria-hidden="true"><svg viewBox="0 0 120 18"><path d="M3 9h34c5 0 7-2 10-5 2-2 5-2 7 0l6 5 6-5c2-2 5-2 7 0 3 3 5 5 10 5h34M3 9h34c5 0 7 2 10 5 2 2 5 2 7 0l6-5 6 5c2 2 5 2 7 0 3-3 5-5 10-5h34"/><path d="M53 9c0-3 3-6 7-6s7 3 7 6-3 6-7 6-7-3-7-6Zm3 0c2-2 4-2 6 0-2 2-4 2-6 0Z"/><circle cx="60" cy="9" r="1"/></svg></span></h2><div class="of-products">';
+    foreach ($recommendations as $recommended_product) { overview_fashion_product_card($recommended_product); }
+    echo '</div></section>';
 }
 
 function overview_fashion_products($args = array()) {
@@ -131,6 +261,47 @@ function overview_fashion_products($args = array()) {
     }
     echo '<div class="of-products">';
     foreach ($products as $product) { overview_fashion_product_card($product); }
+    echo '</div>';
+}
+
+function overview_fashion_home_product_section($title, $args, $url = '', $heading_tag = 'h2') {
+    if (!in_array($heading_tag, array('h1', 'h2'), true)) { $heading_tag = 'h2'; }
+    $products = class_exists('WooCommerce') ? wc_get_products(wp_parse_args($args, array('status' => 'publish', 'limit' => -1, 'orderby' => 'date', 'order' => 'DESC', 'return' => 'objects'))) : array();
+    if (!$products) { return; }
+    echo '<section class="of-home-product-section"><div class="of-home-section-heading"><' . $heading_tag . '>' . esc_html($title) . '</' . $heading_tag . '>';
+    if ($url) { echo '<a href="' . esc_url($url) . '">' . esc_html__('View all', 'overview-fashion') . ' <span aria-hidden="true">→</span></a>'; }
+    echo '</div>';
+    if ($products) {
+        echo '<div class="of-products">';
+        foreach ($products as $section_product) { overview_fashion_product_card($section_product); }
+        echo '</div>';
+    }
+    echo '</section>';
+}
+
+function overview_fashion_single_product_rating($product) {
+    if (!$product instanceof WC_Product) { return; }
+    if ($product->get_rating_count() > 0) {
+        woocommerce_template_single_rating();
+        return;
+    }
+    echo '<div class="of-product-rating-stars" aria-label="' . esc_attr__('Rated 5 out of 5', 'overview-fashion') . '"><span aria-hidden="true">★★★★★</span></div>';
+}
+
+function overview_fashion_single_product_cart_controls($product) {
+    if (!$product instanceof WC_Product || !function_exists('WC') || !WC()->cart) { return; }
+    $cart_item = null;
+    $cart_key = '';
+    foreach (WC()->cart->get_cart() as $key => $item) {
+        if ((int) $item['product_id'] === (int) $product->get_id()) { $cart_item = $item; $cart_key = $key; break; }
+    }
+    if (!$cart_item) { echo '<div data-of-single-product-cart-controls></div>'; return; }
+    $quantity = (int) $cart_item['quantity'];
+    $nonce = wp_create_nonce('overview_fashion_cart_quantity');
+    $ajax_url = admin_url('admin-ajax.php');
+    echo '<div class="of-single-product-cart-controls" data-of-single-product-cart-controls><div class="of-single-product-cart-row"><strong>' . wp_kses_post(wc_price((float) $cart_item['data']->get_price() * $quantity)) . '</strong>';
+    echo '<a class="of-remove-item" href="' . esc_url(overview_fashion_cart_quantity_url($cart_key, 0)) . '" data-of-cart-quantity data-cart-key="' . esc_attr($cart_key) . '" data-quantity="0" data-nonce="' . esc_attr($nonce) . '" data-ajax-url="' . esc_url($ajax_url) . '" aria-label="' . esc_attr__('Remove item', 'overview-fashion') . '"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3m-9 0 1 13h10l1-13M10 11v5m4-5v5"></path></svg></a>';
+    echo '<div class="of-qty-control"><a href="' . esc_url(overview_fashion_cart_quantity_url($cart_key, max(0, $quantity - 1))) . '" data-of-cart-quantity data-cart-key="' . esc_attr($cart_key) . '" data-quantity="' . esc_attr(max(0, $quantity - 1)) . '" data-nonce="' . esc_attr($nonce) . '" data-ajax-url="' . esc_url($ajax_url) . '" aria-label="' . esc_attr__('Decrease quantity', 'overview-fashion') . '">−</a><span>' . esc_html($quantity) . '</span><a href="' . esc_url(overview_fashion_cart_quantity_url($cart_key, $quantity + 1)) . '" data-of-cart-quantity data-cart-key="' . esc_attr($cart_key) . '" data-quantity="' . esc_attr($quantity + 1) . '" data-nonce="' . esc_attr($nonce) . '" data-ajax-url="' . esc_url($ajax_url) . '" aria-label="' . esc_attr__('Increase quantity', 'overview-fashion') . '">+</a></div></div>';
     echo '</div>';
 }
 
@@ -151,6 +322,9 @@ function overview_fashion_shop_page_url() {
 }
 
 function overview_fashion_customize_register($wp_customize) {
+    $wp_customize->add_section('overview_fashion_colors', array('title' => __('Theme colors', 'overview-fashion'), 'priority' => 30));
+    $wp_customize->add_setting('of_theme_color', array('default' => '#176b57', 'sanitize_callback' => 'sanitize_hex_color', 'transport' => 'refresh'));
+    $wp_customize->add_control(new WP_Customize_Color_Control($wp_customize, 'of_theme_color', array('label' => __('Primary theme color', 'overview-fashion'), 'section' => 'overview_fashion_colors')));
     $wp_customize->add_section('overview_fashion_contact', array('title' => __('Store contact details', 'overview-fashion'), 'priority' => 35));
     $fields = array(
         'phone' => array(__('Phone number', 'overview-fashion'), '+880 1XXX-XXXXXX'),
@@ -170,11 +344,89 @@ function overview_fashion_customize_register($wp_customize) {
 }
 add_action('customize_register', 'overview_fashion_customize_register');
 
+function overview_fashion_mix_hex_colors($base, $mix, $amount) {
+    $base = ltrim((string) $base, '#');
+    $mix = ltrim((string) $mix, '#');
+    if (strlen($base) === 3) { $base = $base[0] . $base[0] . $base[1] . $base[1] . $base[2] . $base[2]; }
+    if (strlen($mix) === 3) { $mix = $mix[0] . $mix[0] . $mix[1] . $mix[1] . $mix[2] . $mix[2]; }
+    if (strlen($base) !== 6 || strlen($mix) !== 6) { return '#ffffff'; }
+    $channels = array();
+    for ($i = 0; $i < 3; $i++) {
+        $from = hexdec(substr($base, $i * 2, 2));
+        $to = hexdec(substr($mix, $i * 2, 2));
+        $channels[] = (int) round($from * (1 - $amount) + $to * $amount);
+    }
+    return sprintf('#%02x%02x%02x', $channels[0], $channels[1], $channels[2]);
+}
+
+function overview_fashion_dynamic_theme_colors() {
+    $primary = sanitize_hex_color(get_theme_mod('of_theme_color', '#176b57')) ?: '#176b57';
+    $dark = overview_fashion_mix_hex_colors($primary, '#000000', 0.2);
+    $soft = overview_fashion_mix_hex_colors($primary, '#ffffff', 0.90);
+    $background = overview_fashion_mix_hex_colors($primary, '#ffffff', 0.965);
+    $checkout_background = overview_fashion_mix_hex_colors($primary, '#ffffff', 0.94);
+    $border = overview_fashion_mix_hex_colors($primary, '#ffffff', 0.48);
+    $rgb_hex = ltrim($primary, '#');
+    if (strlen($rgb_hex) === 3) { $rgb_hex = $rgb_hex[0] . $rgb_hex[0] . $rgb_hex[1] . $rgb_hex[1] . $rgb_hex[2] . $rgb_hex[2]; }
+    $shadow = 'rgba(' . hexdec(substr($rgb_hex, 0, 2)) . ',' . hexdec(substr($rgb_hex, 2, 2)) . ',' . hexdec(substr($rgb_hex, 4, 2)) . ',.3)';
+    $css = ':root{--of-primary:' . $primary . ';--of-primary-dark:' . $dark . ';--of-primary-border:' . $border . ';--of-theme-soft:' . $soft . ';--of-bg:' . $background . ';--of-checkout-bg:' . $checkout_background . ';--of-primary-shadow:' . $shadow . '}';
+    wp_add_inline_style('overview-fashion-style', $css);
+}
+add_action('wp_enqueue_scripts', 'overview_fashion_dynamic_theme_colors', 20);
+
+/** Skip the standalone cart screen and take shoppers straight to checkout. */
+function overview_fashion_skip_cart_page() {
+    if (!function_exists('is_cart') || !is_cart()) { return; }
+    $destination = function_exists('WC') && WC()->cart && !WC()->cart->is_empty() ? wc_get_checkout_url() : home_url('/');
+    wp_safe_redirect($destination);
+    exit;
+}
+add_action('template_redirect', 'overview_fashion_skip_cart_page', 20);
+
+/** Finish single-product form submissions with a redirect, so refreshing cannot re-add the product. */
+function overview_fashion_redirect_after_single_product_add() {
+    if (is_admin() || !is_product() || strtoupper($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST' || empty($_REQUEST['add-to-cart'])) { return; }
+    $product_id = absint(wp_unslash($_REQUEST['add-to-cart']));
+    if (!$product_id) { return; }
+    wp_safe_redirect(add_query_arg('added-to-cart', $product_id, get_permalink($product_id)), 303);
+    exit;
+}
+add_action('template_redirect', 'overview_fashion_redirect_after_single_product_add', 30);
+
+function overview_fashion_ajax_add_product_to_cart() {
+    if (!function_exists('WC') || !WC()->cart || !check_ajax_referer('overview_fashion_add_to_cart', 'nonce', false)) {
+        wp_send_json_error(array('message' => __('Please refresh the page and try again.', 'overview-fashion')), 403);
+    }
+    $product_id = isset($_POST['product_id']) ? absint(wp_unslash($_POST['product_id'])) : 0;
+    $quantity = isset($_POST['quantity']) ? max(1, absint(wp_unslash($_POST['quantity']))) : 1;
+    $product = wc_get_product($product_id);
+    if (!$product || !$product->is_purchasable()) {
+        wp_send_json_error(array('message' => __('This product cannot be added to the cart.', 'overview-fashion')), 400);
+    }
+    $variation_id = isset($_POST['variation_id']) ? absint(wp_unslash($_POST['variation_id'])) : 0;
+    $variation = array();
+    foreach ($_POST as $key => $value) {
+        if (strpos((string) $key, 'attribute_') === 0) { $variation[sanitize_text_field($key)] = sanitize_text_field(wp_unslash($value)); }
+    }
+    $cart_item_data = apply_filters('woocommerce_add_cart_item_data', array(), $product_id);
+    $added = WC()->cart->add_to_cart($product_id, $quantity, $variation_id, $variation, $cart_item_data);
+    if (!$added) { wp_send_json_error(array('message' => __('Could not add this product to the cart.', 'overview-fashion')), 400); }
+    WC()->cart->calculate_totals();
+    $fragments = apply_filters('woocommerce_add_to_cart_fragments', array());
+    wp_send_json_success(array('fragments' => $fragments, 'cart_hash' => WC()->cart->get_cart_hash()));
+}
+add_action('wp_ajax_overview_fashion_add_product_to_cart', 'overview_fashion_ajax_add_product_to_cart');
+add_action('wp_ajax_nopriv_overview_fashion_add_product_to_cart', 'overview_fashion_ajax_add_product_to_cart');
+
 // Use this theme's responsive product grid while keeping WooCommerce's product data and cart behavior.
 add_filter('loop_shop_columns', function () { return 4; });
 
 function overview_fashion_remove_woocommerce_sidebar() {
     remove_action('woocommerce_sidebar', 'woocommerce_get_sidebar', 10);
+    if (function_exists('is_product') && is_product()) {
+        remove_action('woocommerce_before_single_product_summary', 'woocommerce_show_product_sale_flash', 10);
+        remove_action('woocommerce_before_single_product', 'woocommerce_output_all_notices', 10);
+    }
 }
 add_action('wp', 'overview_fashion_remove_woocommerce_sidebar');
 
@@ -185,14 +437,45 @@ function overview_fashion_cart_fragments($fragments) {
     $fragments['[data-of-cart-panel-content]'] = ob_get_clean();
     ob_start(); ?><span class="of-mobile-cart-total"><?php echo wp_kses_post(WC()->cart->get_cart_subtotal()); ?></span><?php
     $fragments['[data-of-mobile-cart-total]'] = ob_get_clean();
+    ob_start(); ?><strong class="of-cart-total-value"><?php echo wp_kses_post(WC()->cart->get_cart_subtotal()); ?></strong><?php
+    $fragments['.of-cart-total-value'] = ob_get_clean();
+    ob_start(); overview_fashion_cart_footer(false);
+    $fragments['[data-of-cart-sidebar-footer]'] = ob_get_clean();
+    ob_start(); overview_fashion_cart_footer(true);
+    $fragments['[data-of-cart-drawer-footer]'] = ob_get_clean();
+    ob_start(); overview_fashion_cart_drawer_counts();
+    $fragments['[data-of-cart-drawer-counts]'] = ob_get_clean();
+    $detail_product_id = isset($_POST['product_id']) ? absint(wp_unslash($_POST['product_id'])) : 0;
+    if (!$detail_product_id) { $detail_product_id = url_to_postid(wp_get_referer()); }
+    if ($detail_product_id && get_post_type($detail_product_id) === 'product') {
+        $detail_product = wc_get_product($detail_product_id);
+        ob_start(); overview_fashion_single_product_cart_controls($detail_product);
+        $fragments['[data-of-single-product-cart-controls]'] = ob_get_clean();
+    }
     return $fragments;
 }
 add_filter('woocommerce_add_to_cart_fragments', 'overview_fashion_cart_fragments');
 
+function overview_fashion_cart_footer($drawer = false) {
+    $empty = !function_exists('WC') || !WC()->cart || WC()->cart->is_empty();
+    $type = $drawer ? 'drawer' : 'sidebar';
+    $class = $drawer ? 'of-cart-drawer-footer' : 'of-cart-sidebar-footer';
+    echo '<div class="' . esc_attr($class) . ($empty ? ' is-empty' : '') . '" data-of-cart-' . esc_attr($type) . '-footer>';
+    if (!$empty) {
+        if ($drawer) {
+            echo '<a class="of-button" href="' . esc_url(wc_get_checkout_url()) . '"><span class="of-drawer-checkout-total">' . wp_kses_post(WC()->cart->get_cart_subtotal()) . '</span><span class="of-drawer-checkout-label">' . esc_html__('অর্ডার কনফার্ম করুন', 'overview-fashion') . '</span><span aria-hidden="true">→</span></a>';
+        } else {
+            echo '<div><span>' . esc_html__('TOTAL:', 'overview-fashion') . '</span><strong class="of-cart-total-value">' . wp_kses_post(WC()->cart->get_cart_subtotal()) . '</strong></div><a class="of-button" href="' . esc_url(wc_get_checkout_url()) . '">' . esc_html__('অর্ডার কনফার্ম করুন', 'overview-fashion') . ' <span>→</span></a>';
+        }
+    }
+    echo '</div>';
+}
+
 function overview_fashion_mini_cart_contents() {
-    echo '<div data-of-cart-panel-content>';
-    if (!function_exists('WC') || !WC()->cart || WC()->cart->is_empty()) {
-        echo '<p class="of-cart-empty">' . esc_html__('Add some items', 'overview-fashion') . '</p>';
+    $is_empty = !function_exists('WC') || !WC()->cart || WC()->cart->is_empty();
+    echo '<div class="of-cart-panel-content' . ($is_empty ? ' is-empty' : '') . '" data-of-cart-panel-content>';
+    if ($is_empty) {
+        echo '<div class="of-cart-empty-state"><span class="of-cart-empty-icon"><svg viewBox="0 0 64 64" aria-hidden="true"><path d="M7 9a2.5 2.5 0 0 0 0 5h5l6.8 29.4a7.5 7.5 0 0 0 7.3 5.8h26a2.5 2.5 0 0 0 0-5h-26a2.5 2.5 0 0 1-2.4-1.9l-.4-1.8h28.1a5.5 5.5 0 0 0 5.3-4l5.1-17.8a3.2 3.2 0 0 0-3.1-4.1H16.3l-1.1-4.8A2.5 2.5 0 0 0 12.8 9H7Zm18.7 45a5 5 0 1 0 0 10 5 5 0 0 0 0-10Zm23 0a5 5 0 1 0 0 10 5 5 0 0 0 0-10Z"/></svg></span><span>' . esc_html__('Add some items', 'overview-fashion') . '</span></div>';
     } else {
         echo '<ul class="of-cart-list">';
         foreach (WC()->cart->get_cart() as $cart_key => $cart_item) {
@@ -245,7 +528,7 @@ function overview_fashion_ajax_cart_quantity() {
     if (!$key || !isset(WC()->cart->get_cart()[$key])) { wp_send_json_error(array('message' => 'Cart item not found.'), 404); }
     WC()->cart->set_quantity($key, $quantity, true);
     $fragments = apply_filters('woocommerce_add_to_cart_fragments', array());
-    ob_start(); ?><strong class="of-cart-total-value"><?php echo wp_kses_post(WC()->cart->get_total()); ?></strong><?php
+    ob_start(); ?><strong class="of-cart-total-value"><?php echo wp_kses_post(WC()->cart->get_cart_subtotal()); ?></strong><?php
     $fragments['.of-cart-total-value'] = ob_get_clean();
     wp_send_json_success(array('fragments' => $fragments));
 }
@@ -254,18 +537,18 @@ add_action('wp_ajax_nopriv_overview_fashion_cart_quantity', 'overview_fashion_aj
 
 /** Simplify checkout for Bangladesh orders and keep location fields available to WooCommerce. */
 function overview_fashion_checkout_fields($fields) {
-    $fields['billing']['billing_first_name']['label'] = __('Name', 'overview-fashion');
-    $fields['billing']['billing_first_name']['placeholder'] = __('Enter your name', 'overview-fashion');
+    $fields['billing']['billing_first_name']['label'] = __('নাম', 'overview-fashion');
+    $fields['billing']['billing_first_name']['placeholder'] = __('আপনার নাম লিখুন', 'overview-fashion');
     $fields['billing']['billing_first_name']['priority'] = 10;
     $fields['billing']['billing_first_name']['required'] = true;
     $fields['billing']['billing_first_name']['autocomplete'] = 'name';
-    $fields['billing']['billing_phone']['label'] = __('Phone', 'overview-fashion');
+    $fields['billing']['billing_phone']['label'] = __('মোবাইল নম্বর', 'overview-fashion');
     $fields['billing']['billing_phone']['placeholder'] = __('01XXXXXXXXX', 'overview-fashion');
     $fields['billing']['billing_phone']['priority'] = 20;
     $fields['billing']['billing_phone']['required'] = true;
     $fields['billing']['billing_phone']['custom_attributes'] = array('maxlength' => '11', 'inputmode' => 'numeric', 'pattern' => '01[3-9][0-9]{8}', 'autocomplete' => 'tel');
-    $fields['billing']['billing_address_1']['label'] = __('Address', 'overview-fashion');
-    $fields['billing']['billing_address_1']['placeholder'] = __('House, road, area and district', 'overview-fashion');
+    $fields['billing']['billing_address_1']['label'] = __('আপনার সম্পূর্ণ ঠিকানা', 'overview-fashion');
+    $fields['billing']['billing_address_1']['placeholder'] = __('বাসা, সড়ক, এলাকা ও জেলা লিখুন', 'overview-fashion');
     $fields['billing']['billing_address_1']['priority'] = 30;
     $fields['billing']['billing_address_1']['required'] = true;
     $fields['billing']['billing_address_1']['custom_attributes'] = array('maxlength' => '255');
@@ -299,6 +582,17 @@ function overview_fashion_delivery_charge($cart) {
 }
 add_action('woocommerce_cart_calculate_fees', 'overview_fashion_delivery_charge', 20);
 
+/** Ignore the obsolete flat-rate left by the original local preview setup. */
+function overview_fashion_remove_preview_shipping_rate($rates, $package) {
+    foreach ($rates as $rate_id => $rate) {
+        if ($rate->method_id === 'flat_rate' && strtolower((string) $rate->label) === 'bangladesh delivery') {
+            unset($rates[$rate_id]);
+        }
+    }
+    return $rates;
+}
+add_filter('woocommerce_package_rates', 'overview_fashion_remove_preview_shipping_rate', 100, 2);
+
 function overview_fashion_save_delivery_area($order, $data) {
     $area = isset($_POST['of_delivery_area']) ? sanitize_key(wp_unslash($_POST['of_delivery_area'])) : (function_exists('WC') && WC()->session ? WC()->session->get('of_delivery_area', 'dhaka') : 'dhaka');
     if (!in_array($area, array('dhaka', 'outside'), true)) { $area = 'dhaka'; }
@@ -331,3 +625,7 @@ function overview_fashion_checkout_price_decimals($decimals) {
     return (function_exists('is_checkout') && is_checkout()) || $checkout_ajax ? 0 : $decimals;
 }
 add_filter('wc_get_price_decimals', 'overview_fashion_checkout_price_decimals');
+
+/** This storefront does not use coupon codes. */
+add_filter('woocommerce_coupons_enabled', '__return_false');
+add_filter('woocommerce_order_button_text', function () { return __('অর্ডার কনফার্ম করুন', 'overview-fashion'); });

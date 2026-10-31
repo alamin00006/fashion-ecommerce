@@ -53,8 +53,96 @@
   document.querySelector('[data-of-menu-open]')?.addEventListener('click', () => drawer.classList.add('is-open'));
   document.querySelectorAll('[data-of-menu-close]').forEach((button) => button.addEventListener('click', () => drawer.classList.remove('is-open')));
   const cartDrawer = document.querySelector('[data-of-cart-drawer]');
-  document.querySelectorAll('[data-of-cart-open]').forEach((button) => button.addEventListener('click', () => cartDrawer?.classList.add('is-open')));
-  document.querySelectorAll('[data-of-cart-close]').forEach((button) => button.addEventListener('click', () => cartDrawer?.classList.remove('is-open')));
+  let bottomSheetMotion = null;
+  function closeCartDrawer() {
+    const panel = cartDrawer?.querySelector('.of-cart-drawer-panel');
+    const isBottomSheet = cartDrawer?.classList.contains('is-bottom-open') && cartDrawer.classList.contains('is-open');
+    if (isBottomSheet && panel?.animate && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      bottomSheetMotion?.cancel();
+      bottomSheetMotion = panel.animate(
+        [{ transform: getComputedStyle(panel).transform }, { transform: 'translateY(105%)' }],
+        { duration: 440, easing: 'ease-in-out' }
+      );
+      bottomSheetMotion.onfinish = () => bottomSheetMotion?.cancel();
+    }
+    cartDrawer?.classList.remove('is-open');
+    window.setTimeout(() => cartDrawer?.classList.remove('is-bottom-open'), 480);
+  }
+  document.querySelectorAll('[data-of-cart-open]').forEach((button) => button.addEventListener('click', () => {
+    if (!cartDrawer) return;
+    const useBottomSheet = Boolean(button.closest('[data-of-cart-bar]')) && window.matchMedia('(max-width: 680px)').matches;
+    cartDrawer.classList.remove('is-open', 'is-bottom-open');
+    if (useBottomSheet) {
+      cartDrawer.classList.add('is-bottom-open', 'is-preparing-bottom');
+      cartDrawer.offsetHeight;
+      cartDrawer.classList.remove('is-preparing-bottom');
+      cartDrawer.classList.add('is-open');
+      const panel = cartDrawer.querySelector('.of-cart-drawer-panel');
+      if (panel?.animate && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        bottomSheetMotion?.cancel();
+        bottomSheetMotion = panel.animate(
+          [{ transform: 'translateY(105%)' }, { transform: 'translateY(0)' }],
+          { duration: 460, easing: 'ease-in-out' }
+        );
+        bottomSheetMotion.onfinish = () => bottomSheetMotion?.cancel();
+      }
+    } else {
+      cartDrawer.classList.add('is-open');
+    }
+  }));
+  document.querySelectorAll('[data-of-cart-close]').forEach((button) => button.addEventListener('click', closeCartDrawer));
+  document.addEventListener('submit', async (event) => {
+    const form = event.target.closest('.of-detail-summary form.cart');
+    if (!form || !window.fetch) return;
+    event.preventDefault();
+    const button = form.querySelector('.single_add_to_cart_button');
+    const productId = form.querySelector('[name="add-to-cart"]')?.value || button?.value || form.querySelector('[name="product_id"]')?.value;
+    if (!productId || !button || button.dataset.loading === 'true') return;
+    const formData = new FormData(form);
+    formData.set('product_id', productId);
+    formData.set('quantity', form.querySelector('[name="quantity"]')?.value || '1');
+    button.dataset.loading = 'true';
+    button.disabled = true;
+    button.setAttribute('aria-busy', 'true');
+    try {
+      const payload = new URLSearchParams();
+      payload.set('action', 'overview_fashion_add_product_to_cart');
+      payload.set('nonce', overviewFashionCart.addNonce);
+      formData.forEach((value, key) => payload.set(key, value));
+      payload.set('product_id', productId);
+      const response = await fetch(overviewFashionCart.ajaxUrl, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8', 'X-Requested-With': 'XMLHttpRequest' }, body: payload });
+      const payloadResult = await response.json();
+      if (!response.ok || !payloadResult.success) throw new Error(payloadResult.data?.message || 'Could not add this product.');
+      const result = payloadResult.data;
+      if (result.fragments) {
+        Object.entries(result.fragments).forEach(([selector, markup]) => {
+          const template = document.createElement('template');
+          template.innerHTML = markup.trim();
+          const replacement = template.content.firstElementChild;
+          if (replacement) document.querySelectorAll(selector).forEach((current) => current.replaceWith(replacement.cloneNode(true)));
+        });
+      }
+      button.textContent = 'আরও কিনুন';
+      button.classList.add('added');
+      cartBar?.classList.add('is-visible');
+      button.dataset.loading = 'false';
+      button.disabled = false;
+      button.removeAttribute('aria-busy');
+    } catch (error) {
+      console.error(error);
+      let status = form.querySelector('.of-add-to-cart-error');
+      if (!status) {
+        status = document.createElement('p');
+        status.className = 'of-add-to-cart-error';
+        status.setAttribute('role', 'alert');
+        form.append(status);
+      }
+      status.textContent = error.message || 'পণ্যটি কার্টে যোগ করা যায়নি। আবার চেষ্টা করুন।';
+      button.dataset.loading = 'false';
+      button.disabled = false;
+      button.removeAttribute('aria-busy');
+    }
+  });
   const cartBar = document.querySelector('[data-of-cart-bar]');
   function syncCartBar() {
     const count = Array.from(document.querySelectorAll('[data-of-cart-count]')).some((badge) => Number(badge.textContent.trim()) > 0);
@@ -66,17 +154,6 @@
 
     const $body = window.jQuery(document.body);
     const deliveryRadios = document.querySelectorAll('input[name="of_delivery_area"]');
-    [['#billing_phone', 11], ['#billing_address_1', 255]].forEach(([selector, max]) => {
-      const input = document.querySelector(selector);
-      const label = input?.closest('.form-row')?.querySelector('label');
-      if (!input || !label) return;
-      const counter = document.createElement('span');
-      counter.className = 'of-field-counter';
-      label.append(counter);
-      const updateCounter = () => { counter.textContent = `${input.value.length}/${max}`; };
-      input.addEventListener('input', updateCounter);
-      updateCounter();
-    });
     const syncDeliverySelection = () => {
       document.querySelectorAll('.of-delivery-option').forEach((option) => {
         option.classList.toggle('is-selected', Boolean(option.querySelector('input[name="of_delivery_area"]:checked')));
@@ -141,7 +218,7 @@
   document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') {
       drawer?.classList.remove('is-open');
-      cartDrawer?.classList.remove('is-open');
+      closeCartDrawer();
       closeSearch();
     }
   });

@@ -7,7 +7,7 @@ do_action('woocommerce_before_checkout_form', $checkout);
 ?>
 <div class="of-checkout-page">
   <div class="of-checkout-brandbar">
-    <a class="of-checkout-back" href="<?php echo esc_url(wc_get_cart_url()); ?>" aria-label="<?php esc_attr_e('Back to cart', 'overview-fashion'); ?>">&#8592;</a>
+    <a class="of-checkout-back" href="<?php echo esc_url(home_url('/')); ?>" aria-label="<?php esc_attr_e('Back to home', 'overview-fashion'); ?>"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 12H3m0 0 7-7m-7 7 7 7"/></svg></a>
     <div class="of-checkout-logo"><?php overview_fashion_logo(); ?></div>
   </div>
   <form name="checkout" method="post" class="checkout woocommerce-checkout of-checkout-form" action="<?php echo esc_url(wc_get_checkout_url()); ?>" enctype="multipart/form-data" aria-label="<?php esc_attr_e('Checkout', 'woocommerce'); ?>">
