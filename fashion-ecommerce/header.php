@@ -41,9 +41,7 @@ $home_url = home_url('/');
     <header class="of-header">
       <?php if (function_exists('is_product') && is_product()) : ?><a class="of-back-link" href="<?php echo esc_url(home_url('/')); ?>" aria-label="<?php esc_attr_e('Back to home', 'overview-fashion'); ?>"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 12H3m0 0 7-7m-7 7 7 7"/></svg></a><?php endif; ?>
       <button class="of-mobile-menu" type="button" aria-label="<?php esc_attr_e('Open menu', 'overview-fashion'); ?>" data-of-menu-open><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M3 12h12M3 18h18"/></svg></button>
-      <div class="of-social-links">
-        <a class="of-social-icon of-messenger" href="<?php echo esc_url(get_theme_mod('of_messenger', 'https://m.me/')); ?>" target="_blank" rel="noopener" aria-label="Messenger"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2C6.4 2 2 6.1 2 11.3c0 2.9 1.4 5.5 3.7 7.2V22l3.4-1.9c.9.2 1.9.4 2.9.4 5.6 0 10-4.1 10-9.2S17.6 2 12 2Zm1 12.4-2.6-2.8-5 2.8 5.5-5.8 2.7 2.8 4.9-2.8-5.5 5.8Z"/></svg></a>
-      </div>
+      <div class="of-social-links"><a class="of-social-icon of-messenger" href="<?php echo esc_url(overview_fashion_messenger_url()); ?>" target="_blank" rel="noopener" aria-label="Messenger"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2C6.4 2 2 6.1 2 11.3c0 2.9 1.4 5.5 3.7 7.2V22l3.4-1.9c.9.2 1.9.4 2.9.4 5.6 0 10-4.1 10-9.2S17.6 2 12 2Zm1 12.4-2.6-2.8-5 2.8 5.5-5.8 2.7 2.8 4.9-2.8-5.5 5.8Z"/></svg></a></div>
       <div class="of-header-logo"><?php overview_fashion_logo(); ?></div>
       <div class="of-header-spacer"></div>
       <form class="of-search" role="search" method="get" action="<?php echo esc_url(home_url('/')); ?>">

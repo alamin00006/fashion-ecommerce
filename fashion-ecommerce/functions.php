@@ -23,12 +23,17 @@ function overview_fashion_assets() {
     $style_path = get_stylesheet_directory() . '/style.css';
     $script_path = get_template_directory() . '/assets/theme.js';
     wp_enqueue_style('overview-fashion-style', get_stylesheet_uri(), array(), file_exists($style_path) ? filemtime($style_path) : wp_get_theme()->get('Version'));
-    wp_enqueue_script('overview-fashion-script', get_template_directory_uri() . '/assets/theme.js', array(), file_exists($script_path) ? filemtime($script_path) : wp_get_theme()->get('Version'), true);
+    $script_version = file_exists($script_path) ? filemtime($script_path) . '-' . substr(md5_file($script_path), 0, 8) : wp_get_theme()->get('Version');
+    wp_enqueue_script('overview-fashion-script', get_template_directory_uri() . '/assets/theme.js', array(), $script_version, true);
     wp_localize_script('overview-fashion-script', 'overviewFashionCart', array(
         'ajaxUrl' => admin_url('admin-ajax.php'),
         'checkoutUrl' => function_exists('wc_get_checkout_url') ? wc_get_checkout_url() : home_url('/'),
         'addNonce' => wp_create_nonce('overview_fashion_add_to_cart'),
         'searchNonce' => wp_create_nonce('overview_fashion_product_search'),
+        'fbtBuyLabel' => get_theme_mod('of_fbt_buy_label', 'পণ্যগুলো কিনুন'),
+        'fbtSizeRequiredLabel' => get_theme_mod('of_fbt_size_required_label', 'সাইজ নির্বাচন করুন'),
+        'currencySymbol' => function_exists('get_woocommerce_currency_symbol') ? html_entity_decode(get_woocommerce_currency_symbol(), ENT_QUOTES, 'UTF-8') : '৳',
+        'priceDecimals' => function_exists('wc_get_price_decimals') ? wc_get_price_decimals() : 0,
         'orderLabel' => __('এটি অর্ডার করুন', 'overview-fashion'),
         'addedLabel' => __('আরও কিনুন', 'overview-fashion'),
         'orderConfirmLabel' => __('অর্ডার কনফার্ম করুন', 'overview-fashion'),
@@ -37,9 +42,9 @@ function overview_fashion_assets() {
 add_action('wp_enqueue_scripts', 'overview_fashion_assets');
 
 function overview_fashion_logo() {
-    $sajal_logo_path = get_template_directory() . '/assets/sajal-logo.jpeg';
+    $sajal_logo_path = get_template_directory() . '/assets/sajal-logo.png';
     if (file_exists($sajal_logo_path)) {
-        echo '<a class="custom-logo-link of-sajal-logo" href="' . esc_url(home_url('/')) . '" rel="home"><img src="' . esc_url(get_template_directory_uri() . '/assets/sajal-logo.jpeg') . '" alt="' . esc_attr__('SAJAL — Explore your true style', 'overview-fashion') . '"></a>';
+        echo '<a class="custom-logo-link of-sajal-logo" href="' . esc_url(home_url('/')) . '" rel="home"><img src="' . esc_url(get_template_directory_uri() . '/assets/sajal-logo.png') . '" alt="' . esc_attr__('SAJAL — Explore your true style', 'overview-fashion') . '"></a>';
         return;
     }
     if (has_custom_logo()) {
@@ -177,6 +182,66 @@ function overview_fashion_add_new_product_admin_field() {
 }
 add_action('woocommerce_product_options_general_product_data', 'overview_fashion_add_new_product_admin_field');
 
+function overview_fashion_auto_related_product_ids($product_id, $limit = 20) {
+    $product = wc_get_product($product_id);
+    if (!$product) { return array(); }
+    $terms = wp_get_object_terms($product_id, 'product_cat', array('fields' => 'ids'));
+    if (!is_wp_error($terms) && $terms) {
+        $matches = get_posts(array('post_type' => 'product', 'post_status' => 'publish', 'posts_per_page' => $limit, 'post__not_in' => array($product_id), 'fields' => 'ids', 'orderby' => 'date', 'order' => 'DESC', 'no_found_rows' => true, 'tax_query' => array(array('taxonomy' => 'product_cat', 'field' => 'term_id', 'terms' => $terms))));
+        if ($matches) { return array_map('absint', $matches); }
+    }
+    $tags = wp_get_object_terms($product_id, 'product_tag', array('fields' => 'ids'));
+    if (!is_wp_error($tags) && $tags) {
+        $matches = get_posts(array('post_type' => 'product', 'post_status' => 'publish', 'posts_per_page' => $limit, 'post__not_in' => array($product_id), 'fields' => 'ids', 'orderby' => 'date', 'order' => 'DESC', 'no_found_rows' => true, 'tax_query' => array(array('taxonomy' => 'product_tag', 'field' => 'term_id', 'terms' => $tags))));
+        if ($matches) { return array_map('absint', $matches); }
+    }
+    return array();
+}
+
+function overview_fashion_product_cart_size_totals($product_id) {
+    $totals = array('M' => 0.0, 'L' => 0.0, 'XL' => 0.0);
+    if (!function_exists('WC') || !WC()->cart) { return $totals; }
+    foreach (WC()->cart->get_cart() as $cart_item) {
+        if ((int) ($cart_item['product_id'] ?? 0) !== (int) $product_id) { continue; }
+        $size = overview_fashion_cart_item_size($cart_item);
+        if (isset($totals[$size])) { $totals[$size] += (float) wc_get_price_to_display($cart_item['data']) * (int) $cart_item['quantity']; }
+    }
+    return $totals;
+}
+
+function overview_fashion_render_frequently_bought_together($product) {
+    if (!$product instanceof WC_Product) { return; }
+    $extra_ids = overview_fashion_auto_related_product_ids($product->get_id(), 20);
+    $extras = array();
+    foreach ($extra_ids as $extra_id) {
+        $extra = wc_get_product($extra_id);
+        if ($extra && $extra->is_purchasable() && $extra->is_type('simple')) { $extras[] = $extra; }
+    }
+    if (!$extras) { return; }
+    $items = $extras;
+    $totals = overview_fashion_product_cart_size_totals($product->get_id());
+    $current_size = isset($_REQUEST['of_size']) ? sanitize_text_field(wp_unslash($_REQUEST['of_size'])) : 'M';
+    if (!isset($totals[$current_size])) { $current_size = 'M'; }
+    echo '<section class="of-fbt" data-of-fbt data-current-product="' . esc_attr($product->get_id()) . '"><h2>' . esc_html(get_theme_mod('of_fbt_heading', 'আপনি কি এখান থেকে কিছু নিতে চান?')) . '</h2><div class="of-fbt-items">';
+    foreach ($items as $item) {
+        $image_id = $item->get_image_id();
+        $image = $image_id ? wp_get_attachment_image($image_id, 'woocommerce_thumbnail', false, array('loading' => 'lazy')) : wc_placeholder_img('woocommerce_thumbnail');
+        $price_content = wp_kses_post($item->get_price_html());
+        if ($item->is_on_sale()) {
+            $regular = (float) $item->get_regular_price();
+            $current = (float) $item->get_sale_price();
+            if ($regular > 0 && $current > 0 && $current < $regular) {
+                $discount = (int) floor((($regular - $current) / $regular) * 100);
+                $regular_display = wc_get_price_to_display($item, array('price' => $regular));
+                $current_display = wc_get_price_to_display($item, array('price' => $current));
+                $price_content = '<span class="of-fbt-current-price">' . wc_price($current_display) . '</span><span class="of-fbt-old-price"><small class="of-fbt-discount">-' . esc_html($discount) . '%</small><del>' . wc_price($regular_display) . '</del></span>';
+            }
+        }
+        echo '<label class="of-fbt-item"><input type="checkbox" class="of-fbt-check" value="' . esc_attr($item->get_id()) . '" data-price="' . esc_attr(wc_get_price_to_display($item)) . '"><span class="of-fbt-thumb">' . $image . '</span><span class="of-fbt-info"><strong>' . esc_html($item->get_name()) . '</strong><select aria-label="' . esc_attr(sprintf(__('Size for %s', 'overview-fashion'), $item->get_name())) . '"><option value="" selected disabled>' . esc_html(get_theme_mod('of_fbt_size_placeholder', 'Choose a size')) . '</option><option value="M">M</option><option value="L">L</option><option value="XL">XL</option></select></span><span class="of-fbt-price">' . $price_content . '</span></label>';
+    }
+    echo '</div><div class="of-fbt-footer"><strong>' . esc_html(get_theme_mod('of_fbt_total_label', 'Total:')) . ' <span data-of-fbt-total data-of-fbt-current-total data-base-m="' . esc_attr($totals['M']) . '" data-base-l="' . esc_attr($totals['L']) . '" data-base-xl="' . esc_attr($totals['XL']) . '">' . wp_kses_post(wc_price($totals[$current_size])) . '</span></strong><button class="of-button" type="button" data-of-fbt-add>' . esc_html(get_theme_mod('of_fbt_buy_label', 'পণ্যগুলো কিনুন')) . '</button></div><p class="of-fbt-error" role="alert" hidden></p></section>';
+}
+
 function overview_fashion_save_new_product_admin_field($product) {
     $is_new_product = isset($_POST['_of_is_new_product']) && wc_clean(wp_unslash($_POST['_of_is_new_product'])) === '1';
     $product->update_meta_data('_of_is_new_product', $is_new_product ? 'yes' : 'no');
@@ -251,17 +316,21 @@ function overview_fashion_product_card($product) {
     echo '</article>';
 }
 
+function overview_fashion_single_product_discount_badge($product) {
+    if (!$product instanceof WC_Product || !$product->is_on_sale()) { return; }
+    $regular = (float) ($product->is_type('variable') ? $product->get_variation_regular_price('min', true) : $product->get_regular_price());
+    $current = (float) ($product->is_type('variable') ? $product->get_variation_sale_price('min', true) : $product->get_sale_price());
+    if ($regular <= 0 || $current <= 0 || $current >= $regular) { return; }
+    $discount = (int) floor((($regular - $current) / $regular) * 100);
+    echo '<span class="of-detail-sale-badge">-' . esc_html($discount) . '%</span>';
+}
+
 function overview_fashion_render_product_recommendations($product) {
     if (!$product instanceof WC_Product) { return; }
     $product_id = $product->get_id();
-    $related_ids = wc_get_related_products($product_id, 8, array());
-    $related = $related_ids ? wc_get_products(array('include' => $related_ids, 'orderby' => 'include', 'limit' => 8, 'status' => 'publish')) : array();
-    $excluded_ids = array_values(array_unique(array_merge(array($product_id), $related_ids)));
-    $latest = wc_get_products(array('status' => 'publish', 'limit' => 8, 'orderby' => 'date', 'order' => 'DESC', 'exclude' => $excluded_ids));
-
-    $recommendations = array_merge($related, $latest);
+    $recommendations = wc_get_products(array('status' => 'publish', 'limit' => 8, 'orderby' => 'date', 'order' => 'DESC', 'exclude' => array($product_id)));
     if (!$recommendations) { return; }
-    echo '<section class="of-similar-products of-recommendation-section"><h2>' . esc_html__('Similar Products', 'overview-fashion') . '<span class="of-similar-ornament" aria-hidden="true"><svg viewBox="0 0 120 18"><path d="M3 9h34c5 0 7-2 10-5 2-2 5-2 7 0l6 5 6-5c2-2 5-2 7 0 3 3 5 5 10 5h34M3 9h34c5 0 7 2 10 5 2 2 5 2 7 0l6-5 6 5c2 2 5 2 7 0 3-3 5-5 10-5h34"/><path d="M53 9c0-3 3-6 7-6s7 3 7 6-3 6-7 6-7-3-7-6Zm3 0c2-2 4-2 6 0-2 2-4 2-6 0Z"/><circle cx="60" cy="9" r="1"/></svg></span></h2><div class="of-products">';
+    echo '<section class="of-similar-products of-recommendation-section"><h2>' . esc_html__('Latest Products', 'overview-fashion') . '<span class="of-similar-ornament" aria-hidden="true"><svg viewBox="0 0 120 18"><path d="M3 9h34c5 0 7-2 10-5 2-2 5-2 7 0l6 5 6-5c2-2 5-2 7 0 3 3 5 5 10 5h34M3 9h34c5 0 7 2 10 5 2 2 5 2 7 0l6-5 6 5c2 2 5 2 7 0 3-3 5-5 10-5h34"/><path d="M53 9c0-3 3-6 7-6s7 3 7 6-3 6-7 6-7-3-7-6Zm3 0c2-2 4-2 6 0-2 2-4 2-6 0Z"/><circle cx="60" cy="9" r="1"/></svg></span></h2><div class="of-products">';
     foreach ($recommendations as $recommended_product) { overview_fashion_product_card($recommended_product); }
     echo '</div></section>';
 }
@@ -340,6 +409,24 @@ function overview_fashion_shop_page_url() {
     return home_url('/');
 }
 
+function overview_fashion_messenger_url() {
+    $url = get_theme_mod('of_messenger', '');
+    if (!$url || untrailingslashit($url) === 'https://m.me') { return 'https://www.facebook.com/Sajalonline/'; }
+    return $url;
+}
+
+function overview_fashion_render_free_delivery_notice() {
+    $enabled = (bool) get_theme_mod('of_free_delivery_notice_enabled', true);
+    $message = get_theme_mod('of_free_delivery_notice_text', 'একাধিক পণ্য অর্ডার করলে ডেলিভারি চার্জ সম্পূর্ণ ফ্রি।');
+    if (!$enabled || trim((string) $message) === '') { return; }
+    echo '<p class="of-free-delivery-note"><span aria-hidden="true">🚚</span> ' . esc_html($message) . '</p>';
+}
+
+function overview_fashion_render_contact_cta($context_class = '') {
+    $class = 'of-call-to-order' . ($context_class ? ' ' . sanitize_html_class($context_class) : '');
+    echo '<div class="' . esc_attr($class) . '"><span class="of-call-icon" aria-hidden="true">☎</span><strong class="of-call-number">01969905799</strong><a class="of-call-messenger" href="' . esc_url(overview_fashion_messenger_url()) . '" target="_blank" rel="noopener" aria-label="Messenger"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2C6.4 2 2 6.1 2 11.3c0 2.9 1.4 5.5 3.7 7.2V22l3.4-1.9c.9.2 1.9.4 2.9.4 5.6 0 10-4.1 10-9.2S17.6 2 12 2Zm1 12.4-2.6-2.8-5 2.8 5.5-5.8 2.7 2.8 4.9-2.8-5.5 5.8Z"/></svg></a></div>';
+}
+
 function overview_fashion_customize_register($wp_customize) {
     $wp_customize->add_section('overview_fashion_colors', array('title' => __('Theme colors', 'overview-fashion'), 'priority' => 30));
     $wp_customize->add_setting('of_theme_color', array('default' => '#176b57', 'sanitize_callback' => 'sanitize_hex_color', 'transport' => 'refresh'));
@@ -351,13 +438,34 @@ function overview_fashion_customize_register($wp_customize) {
         'address' => array(__('Store location', 'overview-fashion'), 'Dhaka, Bangladesh'),
         'facebook' => array(__('Facebook URL', 'overview-fashion'), ''),
         'instagram' => array(__('Instagram URL', 'overview-fashion'), ''),
-        'messenger' => array(__('Messenger URL', 'overview-fashion'), 'https://m.me/'),
+        'messenger' => array(__('Messenger URL', 'overview-fashion'), 'https://www.facebook.com/Sajalonline/'),
         'whatsapp' => array(__('WhatsApp URL', 'overview-fashion'), 'https://wa.me/'),
     );
     foreach ($fields as $key => $data) {
         $wp_customize->add_setting('of_' . $key, array('default' => $data[1], 'sanitize_callback' => $key === 'email' ? 'sanitize_email' : ($key === 'phone' || $key === 'address' ? 'sanitize_text_field' : 'esc_url_raw')));
         $wp_customize->add_control('of_' . $key, array('label' => $data[0], 'section' => 'overview_fashion_contact', 'type' => 'text'));
     }
+    $wp_customize->add_section('overview_fashion_fbt_text', array('title' => __('Frequently bought together text', 'overview-fashion'), 'priority' => 36));
+    $fbt_texts = array(
+        'of_fbt_heading' => array(__('Section heading', 'overview-fashion'), 'আপনি কি এখান থেকে কিছু নিতে চান?'),
+        'of_fbt_total_label' => array(__('Total label', 'overview-fashion'), 'Total:'),
+        'of_fbt_buy_label' => array(__('Buy button text', 'overview-fashion'), 'পণ্যগুলো কিনুন'),
+        'of_fbt_size_placeholder' => array(__('Size placeholder', 'overview-fashion'), 'Choose a size'),
+        'of_fbt_size_required_label' => array(__('Select size button text', 'overview-fashion'), 'সাইজ নির্বাচন করুন'),
+    );
+    foreach ($fbt_texts as $setting => $data) {
+        $wp_customize->add_setting($setting, array('default' => $data[1], 'sanitize_callback' => 'sanitize_text_field', 'transport' => 'refresh'));
+        $wp_customize->add_control($setting, array('label' => $data[0], 'section' => 'overview_fashion_fbt_text', 'type' => 'text'));
+    }
+    $wp_customize->add_section('overview_fashion_delivery', array('title' => __('Delivery offer', 'overview-fashion'), 'priority' => 37));
+    $wp_customize->add_setting('of_multi_item_free_shipping', array('default' => true, 'sanitize_callback' => 'rest_sanitize_boolean', 'transport' => 'refresh'));
+    $wp_customize->add_control('of_multi_item_free_shipping', array('label' => __('Free delivery when cart has 2 or more items', 'overview-fashion'), 'section' => 'overview_fashion_delivery', 'type' => 'checkbox'));
+    $wp_customize->add_setting('of_free_shipping_min_items', array('default' => 2, 'sanitize_callback' => 'absint', 'transport' => 'refresh'));
+    $wp_customize->add_control('of_free_shipping_min_items', array('label' => __('Minimum item quantity for free delivery', 'overview-fashion'), 'section' => 'overview_fashion_delivery', 'type' => 'number', 'input_attrs' => array('min' => 2, 'step' => 1)));
+    $wp_customize->add_setting('of_free_delivery_notice_enabled', array('default' => true, 'sanitize_callback' => 'rest_sanitize_boolean', 'transport' => 'refresh'));
+    $wp_customize->add_control('of_free_delivery_notice_enabled', array('label' => __('Show free delivery notice', 'overview-fashion'), 'section' => 'overview_fashion_delivery', 'type' => 'checkbox'));
+    $wp_customize->add_setting('of_free_delivery_notice_text', array('default' => 'একাধিক পণ্য অর্ডার করলে ডেলিভারি চার্জ সম্পূর্ণ ফ্রি।', 'sanitize_callback' => 'sanitize_text_field', 'transport' => 'refresh'));
+    $wp_customize->add_control('of_free_delivery_notice_text', array('label' => __('Free delivery notice text', 'overview-fashion'), 'section' => 'overview_fashion_delivery', 'type' => 'text'));
     $wp_customize->add_setting('of_cover_banner', array('default' => '', 'sanitize_callback' => 'esc_url_raw'));
     $wp_customize->add_control(new WP_Customize_Image_Control($wp_customize, 'of_cover_banner', array('label' => __('Homepage banner image', 'overview-fashion'), 'section' => 'static_front_page')));
 }
@@ -438,6 +546,39 @@ function overview_fashion_ajax_add_product_to_cart() {
 add_action('wp_ajax_overview_fashion_add_product_to_cart', 'overview_fashion_ajax_add_product_to_cart');
 add_action('wp_ajax_nopriv_overview_fashion_add_product_to_cart', 'overview_fashion_ajax_add_product_to_cart');
 
+function overview_fashion_ajax_add_fbt_products() {
+    if (!function_exists('WC') || !WC()->cart || !check_ajax_referer('overview_fashion_add_to_cart', 'nonce', false)) {
+        wp_send_json_error(array('message' => __('Please refresh the page and try again.', 'overview-fashion')), 403);
+    }
+    $current_id = isset($_POST['current_product']) ? absint(wp_unslash($_POST['current_product'])) : 0;
+    $current = wc_get_product($current_id);
+    $allowed_ids = $current ? overview_fashion_auto_related_product_ids($current_id, 20) : array();
+    $items = isset($_POST['items']) ? json_decode(wp_unslash($_POST['items']), true) : array();
+    if (!$current || !is_array($items) || !$items) { wp_send_json_error(array('message' => __('Choose at least one product.', 'overview-fashion')), 400); }
+    $original_size = $_POST['of_size'] ?? null;
+    $current_size = isset($_POST['current_size']) ? sanitize_text_field(wp_unslash($_POST['current_size'])) : 'M';
+    if (!in_array($current_size, array('M', 'L', 'XL'), true)) { $current_size = 'M'; }
+    $added_any = false;
+    foreach ($items as $entry) {
+        $id = isset($entry['id']) ? absint($entry['id']) : 0;
+        $size = isset($entry['size']) ? sanitize_text_field($entry['size']) : 'M';
+        $item_product = wc_get_product($id);
+        if (!$item_product || !in_array($id, $allowed_ids, true) || !$item_product->is_type('simple') || !$item_product->is_purchasable() || !in_array($size, array('M', 'L', 'XL'), true)) { continue; }
+        $_POST['of_size'] = $size;
+        $added_any = WC()->cart->add_to_cart($id, 1, 0, array(), array('of_size' => $size)) || $added_any;
+    }
+    if (!$added_any) { wp_send_json_error(array('message' => __('Could not add the selected products.', 'overview-fashion')), 400); }
+    WC()->cart->calculate_totals();
+    $_POST['of_size'] = $current_size;
+    $_POST['product_id'] = $current_id;
+    $fragments = apply_filters('woocommerce_add_to_cart_fragments', array());
+    if ($original_size === null) { unset($_POST['of_size']); } else { $_POST['of_size'] = $original_size; }
+    unset($_POST['product_id']);
+    wp_send_json_success(array('fragments' => $fragments, 'cart_hash' => WC()->cart->get_cart_hash()));
+}
+add_action('wp_ajax_overview_fashion_add_fbt_products', 'overview_fashion_ajax_add_fbt_products');
+add_action('wp_ajax_nopriv_overview_fashion_add_fbt_products', 'overview_fashion_ajax_add_fbt_products');
+
 function overview_fashion_ajax_refresh_product_cart_controls() {
     if (!check_ajax_referer('overview_fashion_add_to_cart', 'nonce', false)) {
         wp_send_json_error(array('message' => __('Please refresh the page and try again.', 'overview-fashion')), 403);
@@ -516,6 +657,12 @@ function overview_fashion_cart_fragments($fragments) {
         $detail_product = wc_get_product($detail_product_id);
         ob_start(); overview_fashion_single_product_cart_controls($detail_product);
         $fragments['[data-of-single-product-cart-controls]'] = ob_get_clean();
+        $size_totals = overview_fashion_product_cart_size_totals($detail_product_id);
+        $selected_size = isset($_POST['of_size']) ? sanitize_text_field(wp_unslash($_POST['of_size'])) : 'M';
+        if (!isset($size_totals[$selected_size])) { $selected_size = 'M'; }
+        ob_start();
+        echo '<span data-of-fbt-total data-of-fbt-current-total data-base-m="' . esc_attr($size_totals['M']) . '" data-base-l="' . esc_attr($size_totals['L']) . '" data-base-xl="' . esc_attr($size_totals['XL']) . '">' . wp_kses_post(wc_price($size_totals[$selected_size])) . '</span>';
+        $fragments['[data-of-fbt-current-total]'] = ob_get_clean();
     }
     return $fragments;
 }
@@ -656,6 +803,9 @@ function overview_fashion_delivery_charge($cart) {
     }
     if (!in_array($area, array('dhaka', 'outside'), true)) { $area = 'dhaka'; }
     WC()->session->set('of_delivery_area', $area);
+    $free_shipping_for_multiple = (bool) get_theme_mod('of_multi_item_free_shipping', true);
+    $free_shipping_min_items = max(2, absint(get_theme_mod('of_free_shipping_min_items', 2)));
+    if ($free_shipping_for_multiple && (int) $cart->get_cart_contents_count() >= $free_shipping_min_items) { return; }
     $cart->add_fee(__('Delivery Charge', 'overview-fashion'), $area === 'outside' ? 130 : 80, false);
 }
 add_action('woocommerce_cart_calculate_fees', 'overview_fashion_delivery_charge', 20);

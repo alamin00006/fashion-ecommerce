@@ -181,6 +181,8 @@
       const orderButton = summary?.querySelector('.single_add_to_cart_button');
       const productId = summary?.querySelector('form.cart [name="add-to-cart"]')?.value || orderButton?.value;
       const sameSizeInCart = Array.from(document.querySelectorAll('.of-cart-item[data-product-id]')).some((item) => item.dataset.productId === String(productId) && item.dataset.productSize === input.value);
+      const anySizeInCart = Array.from(document.querySelectorAll('.of-cart-item[data-product-id]')).some((item) => item.dataset.productId === String(productId));
+      summary?.querySelector('.of-mobile-order-note')?.classList.toggle('is-visible', anySizeInCart);
       if (orderButton && orderButton.dataset.loading !== 'true') {
         orderButton.classList.toggle('is-already-in-cart', sameSizeInCart);
         orderButton.textContent = sameSizeInCart ? overviewFashionCart.addedLabel : overviewFashionCart.orderLabel;
@@ -188,6 +190,7 @@
     };
     picker.querySelectorAll('input[name="of_size"]').forEach((input) => input.addEventListener('change', () => {
       syncOrderButton(input);
+      summary?.querySelector('[data-of-fbt]')?.dispatchEvent(new Event('of-fbt-refresh-total'));
       refreshControls(input);
     }));
     syncOrderButton(picker.querySelector('input[name="of_size"]:checked'));
@@ -231,9 +234,11 @@
           if (replacement) document.querySelectorAll(selector).forEach((current) => current.replaceWith(replacement.cloneNode(true)));
         });
       }
+      refreshFbtTotals();
       button.textContent = overviewFashionCart.addedLabel;
       button.classList.add('is-already-in-cart');
       button.classList.add('added');
+      form.closest('.of-detail-summary')?.querySelector('.of-mobile-order-note')?.classList.add('is-visible');
       cartBar?.classList.add('is-visible');
       button.dataset.loading = 'false';
       button.disabled = false;
@@ -254,6 +259,113 @@
     }
   });
   const cartBar = document.querySelector('[data-of-cart-bar]');
+  const refreshFbtTotals = () => document.querySelectorAll('[data-of-fbt]').forEach((bundle) => bundle.dispatchEvent(new Event('of-fbt-refresh-total')));
+  document.querySelectorAll('[data-of-fbt]').forEach((bundle) => {
+    const addButton = bundle.querySelector('[data-of-fbt-add]');
+    const readyButtonLabel = overviewFashionCart.fbtBuyLabel || 'পণ্যগুলো কিনুন';
+    const syncButtonState = () => {
+      const selectedRows = Array.from(bundle.querySelectorAll('.of-fbt-item:not(.is-current)')).filter((row) => row.querySelector('.of-fbt-check')?.checked);
+      const needsSize = selectedRows.some((row) => !row.querySelector('.of-fbt-info select')?.value);
+      if (addButton) {
+        addButton.disabled = needsSize || selectedRows.length === 0;
+        addButton.textContent = needsSize ? (overviewFashionCart.fbtSizeRequiredLabel || 'সাইজ নির্বাচন করুন') : readyButtonLabel;
+      }
+    };
+    const updateTotal = () => {
+      const selectedMainSize = bundle.closest('.of-detail-summary')?.querySelector('.of-size-picker input[name="of_size"]:checked')?.value || 'M';
+      const totalNode = bundle.querySelector('[data-of-fbt-total]');
+      let total = Number(totalNode?.getAttribute(`data-base-${selectedMainSize.toLowerCase()}`) || 0);
+      bundle.querySelectorAll('.of-fbt-check:checked:not(:disabled)').forEach((input) => { total += Number(input.dataset.price || 0); });
+      const decimals = Number(overviewFashionCart.priceDecimals ?? 0);
+      const formatted = new Intl.NumberFormat('en-BD', { minimumFractionDigits: decimals, maximumFractionDigits: decimals }).format(total);
+      if (totalNode) totalNode.textContent = `${overviewFashionCart.currencySymbol || '৳'} ${formatted}`;
+    };
+    bundle.addEventListener('of-fbt-refresh-total', updateTotal);
+    bundle.addEventListener('change', (event) => {
+      if (event.target.matches('.of-fbt-check')) event.target.closest('.of-fbt-item')?.classList.toggle('is-selected', event.target.checked);
+      updateTotal();
+      syncButtonState();
+    });
+    bundle.querySelectorAll('.of-fbt-check').forEach((input) => input.closest('.of-fbt-item')?.classList.toggle('is-selected', input.checked));
+    updateTotal();
+    syncButtonState();
+    addButton?.addEventListener('click', async (event) => {
+      const button = event.currentTarget;
+      const errorNode = bundle.querySelector('.of-fbt-error');
+      const summary = bundle.closest('.of-detail-summary');
+      const selectedMainSize = summary?.querySelector('.of-size-picker input[name="of_size"]:checked')?.value || 'M';
+      const selectedRows = Array.from(bundle.querySelectorAll('.of-fbt-item')).filter((row) => !row.classList.contains('is-current') && row.querySelector('.of-fbt-check')?.checked);
+      if (!selectedRows.length) return;
+      const items = selectedRows.map((row) => ({ id: row.querySelector('.of-fbt-check').value, size: row.querySelector('.of-fbt-info select').value }));
+      button.disabled = true;
+      button.setAttribute('aria-busy', 'true');
+      if (errorNode) { errorNode.hidden = true; errorNode.textContent = ''; }
+      try {
+        const body = new URLSearchParams({ action: 'overview_fashion_add_fbt_products', nonce: overviewFashionCart.addNonce, current_product: bundle.dataset.currentProduct, product_id: bundle.dataset.currentProduct, current_size: selectedMainSize, items: JSON.stringify(items) });
+        const response = await fetch(overviewFashionCart.ajaxUrl, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8', 'X-Requested-With': 'XMLHttpRequest' }, body });
+        const result = await response.json();
+        if (!response.ok || !result.success) throw new Error(result.data?.message || 'Could not add the selected products.');
+        Object.entries(result.data.fragments || {}).forEach(([selector, markup]) => {
+          const template = document.createElement('template');
+          template.innerHTML = markup.trim();
+          const replacement = template.content.firstElementChild;
+          if (replacement) document.querySelectorAll(selector).forEach((current) => current.replaceWith(replacement.cloneNode(true)));
+        });
+        refreshFbtTotals();
+        bundle.querySelector('.of-mobile-order-note')?.classList.add('is-visible');
+        cartBar?.classList.add('is-visible');
+        window.jQuery?.(document.body).trigger('wc_fragment_refresh');
+      } catch (error) {
+        if (errorNode) { errorNode.textContent = error.message; errorNode.hidden = false; }
+      } finally {
+        button.removeAttribute('aria-busy');
+        syncButtonState();
+      }
+    });
+  });
+  document.querySelectorAll('[data-of-checkout-latest]').forEach((section) => {
+    const track = section.querySelector('[data-of-latest-track]');
+    section.querySelector('[data-of-latest-prev]')?.addEventListener('click', () => track?.scrollBy({ left: -(track.clientWidth || 280), behavior: 'smooth' }));
+    section.querySelector('[data-of-latest-next]')?.addEventListener('click', () => track?.scrollBy({ left: track.clientWidth || 280, behavior: 'smooth' }));
+  });
+  document.addEventListener('click', async (event) => {
+    const button = event.target.closest('[data-of-checkout-latest-add]');
+    if (!button) return;
+    const card = button.closest('.of-checkout-latest-product');
+    const size = card?.querySelector('.of-checkout-latest-size')?.value;
+    const message = button.closest('[data-of-checkout-latest]')?.querySelector('.of-checkout-latest-message');
+    if (!card || !size) {
+      if (message) { message.textContent = 'সাইজ নির্বাচন করুন।'; message.classList.add('is-error'); }
+      card?.querySelector('.of-checkout-latest-size')?.focus();
+      return;
+    }
+    button.disabled = true;
+    button.setAttribute('aria-busy', 'true');
+    if (message) { message.textContent = ''; message.classList.remove('is-error'); }
+    try {
+      const body = new URLSearchParams({ action: 'overview_fashion_add_product_to_cart', nonce: overviewFashionCart.addNonce, product_id: card.dataset.productId, quantity: '1', of_size: size });
+      const response = await fetch(overviewFashionCart.ajaxUrl, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8', 'X-Requested-With': 'XMLHttpRequest' }, body });
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.data?.message || 'পণ্যটি কার্টে যোগ করা যায়নি।');
+      Object.entries(result.data.fragments || {}).forEach(([selector, markup]) => {
+        const template = document.createElement('template');
+        template.innerHTML = markup.trim();
+        const replacement = template.content.firstElementChild;
+        if (replacement) document.querySelectorAll(selector).forEach((current) => current.replaceWith(replacement.cloneNode(true)));
+      });
+      button.textContent = 'আরও কিনুন';
+      button.disabled = false;
+      if (message) { message.textContent = ''; message.classList.remove('is-error'); }
+      window.jQuery?.(document.body).trigger('wc_fragment_refresh');
+      window.jQuery?.(document.body).trigger('update_checkout');
+      cartBar?.classList.add('is-visible');
+    } catch (error) {
+      if (message) { message.textContent = error.message; message.classList.add('is-error'); }
+      button.disabled = false;
+    } finally {
+      button.removeAttribute('aria-busy');
+    }
+  });
   const mobileCartLabel = cartBar?.querySelector(':scope > span:nth-child(2)');
   if (mobileCartLabel) mobileCartLabel.textContent = overviewFashionCart.orderConfirmLabel;
   function syncCartBar() {
@@ -273,14 +385,22 @@
     };
     const syncCheckoutTotals = () => {
       const subtotal = document.querySelector('#order_review .cart-subtotal td');
-      const delivery = document.querySelector('#order_review tr.fee td');
       const total = document.querySelector('#order_review .order-total td');
+      const totals = document.querySelector('[data-of-checkout-totals]');
       const subtotalTarget = document.querySelector('[data-of-checkout-subtotal]');
       const deliveryTarget = document.querySelector('[data-of-checkout-delivery]');
       const totalTarget = document.querySelector('[data-of-checkout-total]');
       if (subtotal && subtotalTarget) subtotalTarget.innerHTML = subtotal.innerHTML;
-      if (delivery && deliveryTarget) deliveryTarget.innerHTML = delivery.innerHTML;
       if (total && totalTarget) totalTarget.innerHTML = total.innerHTML;
+      if (totals && deliveryTarget) {
+        const selectedArea = document.querySelector('input[name="of_delivery_area"]:checked')?.value || 'dhaka';
+        const amount = Number(selectedArea === 'outside' ? totals.dataset.outsideCharge : totals.dataset.dhakaCharge);
+        const count = Array.from(document.querySelectorAll('#order_review .of-checkout-qty-control > span')).reduce((sum, item) => sum + Number(item.textContent.trim() || 0), 0);
+        const freeEnabled = totals.dataset.freeShippingEnabled === '1';
+        const isFree = freeEnabled && count >= Number(totals.dataset.freeShippingMinItems || 2);
+        const formattedAmount = new Intl.NumberFormat('en-BD', { maximumFractionDigits: 0 }).format(amount);
+        deliveryTarget.textContent = isFree ? 'ফ্রি' : `৳ ${formattedAmount}`;
+      }
     };
     deliveryRadios.forEach((radio) => radio.addEventListener('change', () => {
       syncDeliverySelection();
@@ -323,6 +443,7 @@
         if (!replacement) return;
         document.querySelectorAll(selector).forEach((current) => current.replaceWith(replacement.cloneNode(true)));
       });
+      refreshFbtTotals();
       syncCartBar();
       if (control.closest('.of-checkout-right') && window.jQuery) window.jQuery(document.body).trigger('update_checkout');
       if (window.jQuery) window.jQuery(document.body).trigger('wc_fragments_refreshed');
