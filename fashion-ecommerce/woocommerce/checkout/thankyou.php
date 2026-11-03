@@ -8,7 +8,7 @@ if (!$order) {
 }
 
 $order_id = $order->get_id();
-$thankyou_products = wc_get_products(array('status' => 'publish', 'limit' => 8, 'orderby' => 'date', 'order' => 'DESC', 'type' => 'simple'));
+$thankyou_products = wc_get_products(array('status' => 'publish', 'limit' => 24, 'orderby' => 'date', 'order' => 'DESC', 'type' => 'simple', 'meta_query' => array(array('key' => '_of_is_new_product', 'value' => 'yes'))));
 $thankyou_products = array_values(array_filter($thankyou_products, static function ($product) { return $product instanceof WC_Product && $product->is_purchasable(); }));
 do_action('woocommerce_before_thankyou', $order_id);
 ?>
@@ -40,7 +40,7 @@ do_action('woocommerce_before_thankyou', $order_id);
 
   <?php if ($thankyou_products) : ?>
     <section class="of-checkout-latest of-thankyou-offers" data-of-checkout-latest>
-      <div class="of-checkout-latest-heading"><h2>এখান থেকে যেকোনো প্রোডাক্ট কিনলেই পাচ্ছেন ২০% ডিসকাউন্ট</h2><div><button type="button" data-of-latest-prev aria-label="আগের প্রোডাক্ট">‹</button><button type="button" data-of-latest-next aria-label="পরের প্রোডাক্ট">›</button></div></div>
+      <div class="of-checkout-latest-heading"><h2><?php echo esc_html(get_theme_mod('of_thankyou_offer_heading', 'এখান থেকে যেকোনো প্রোডাক্ট কিনলেই পাচ্ছেন কমপক্ষে ২০% ডিসকাউন্ট')); ?></h2><div><button type="button" data-of-latest-prev aria-label="আগের প্রোডাক্ট">‹</button><button type="button" data-of-latest-next aria-label="পরের প্রোডাক্ট">›</button></div></div>
       <div class="of-checkout-latest-track" data-of-latest-track>
         <?php foreach ($thankyou_products as $offer_product) : ?>
           <?php

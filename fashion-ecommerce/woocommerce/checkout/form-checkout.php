@@ -9,15 +9,22 @@ $free_shipping_enabled = (bool) get_theme_mod('of_multi_item_free_shipping', tru
 $free_shipping_min_items = max(2, absint(get_theme_mod('of_free_shipping_min_items', 2)));
 $cart_quantity = WC()->cart ? (int) WC()->cart->get_cart_contents_count() : 0;
 $free_shipping_eligible = $free_shipping_enabled && $cart_quantity >= $free_shipping_min_items;
+$checkout_back_url = home_url('/');
+$checkout_cart_items = WC()->cart ? WC()->cart->get_cart() : array();
+if ($checkout_cart_items) {
+    $first_checkout_item = reset($checkout_cart_items);
+    $first_checkout_product_id = !empty($first_checkout_item['product_id']) ? absint($first_checkout_item['product_id']) : 0;
+    if ($first_checkout_product_id) { $checkout_back_url = add_query_arg('of_checkout_return', '1', get_permalink($first_checkout_product_id)); }
+}
 $checkout_cart_product_ids = WC()->cart ? array_values(array_unique(array_map(static function ($item) { return (int) $item['product_id']; }, WC()->cart->get_cart()))) : array();
-$checkout_latest_products = wc_get_products(array('status' => 'publish', 'limit' => 24, 'orderby' => 'date', 'order' => 'DESC'));
+$checkout_latest_products = wc_get_products(array('status' => 'publish', 'limit' => 24, 'orderby' => 'date', 'order' => 'DESC', 'meta_query' => array(array('key' => '_of_is_new_product', 'value' => 'yes'))));
 $checkout_latest_products = array_values(array_filter($checkout_latest_products, static function ($product) { return $product instanceof WC_Product && $product->is_type('simple') && $product->is_purchasable(); }));
 $checkout_latest_products = array_slice($checkout_latest_products, 0, 8);
 do_action('woocommerce_before_checkout_form', $checkout);
 ?>
 <div class="of-checkout-page">
   <div class="of-checkout-brandbar">
-    <a class="of-checkout-back" href="<?php echo esc_url(home_url('/')); ?>" aria-label="<?php esc_attr_e('Back to home', 'overview-fashion'); ?>"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 12H3m0 0 7-7m-7 7 7 7"/></svg></a>
+    <a class="of-checkout-back" href="<?php echo esc_url($checkout_back_url); ?>" aria-label="<?php esc_attr_e('Back to product', 'overview-fashion'); ?>"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 12H3m0 0 7-7m-7 7 7 7"/></svg></a>
     <div class="of-checkout-logo"><?php overview_fashion_logo(); ?></div>
   </div>
   <form name="checkout" method="post" class="checkout woocommerce-checkout of-checkout-form" action="<?php echo esc_url(wc_get_checkout_url()); ?>" enctype="multipart/form-data" aria-label="<?php esc_attr_e('Checkout', 'woocommerce'); ?>">

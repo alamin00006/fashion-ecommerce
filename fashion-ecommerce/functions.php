@@ -17,6 +17,26 @@ function overview_fashion_setup() {
 }
 add_action('after_setup_theme', 'overview_fashion_setup');
 
+function overview_fashion_site_name_override($pre_option) {
+    return 'SAJAL ONLINE';
+}
+add_filter('pre_option_blogname', 'overview_fashion_site_name_override');
+
+function overview_fashion_document_title_parts($title) {
+    $title['site'] = 'SAJAL ONLINE';
+    return $title;
+}
+add_filter('document_title_parts', 'overview_fashion_document_title_parts');
+
+function overview_fashion_favicon_fallback() {
+    if (get_option('site_icon')) { return; }
+    $assets_url = get_template_directory_uri() . '/assets/';
+    echo '<link rel="icon" href="' . esc_url($assets_url . 'favicon.ico') . '" sizes="any">' . "\n";
+    echo '<link rel="icon" type="image/png" href="' . esc_url($assets_url . 'favicon-512.png') . '" sizes="512x512">' . "\n";
+    echo '<link rel="apple-touch-icon" href="' . esc_url($assets_url . 'apple-touch-icon.png') . '">' . "\n";
+}
+add_action('wp_head', 'overview_fashion_favicon_fallback', 1);
+
 
 function overview_fashion_assets() {
     wp_enqueue_style('overview-fashion-fonts', 'https://fonts.googleapis.com/css2?family=Cinzel:wght@700&family=Manrope:wght@400;500;600;700;800&display=swap', array(), null);
@@ -141,7 +161,7 @@ function overview_fashion_product_size_field() {
 }
 add_action('woocommerce_before_add_to_cart_button', 'overview_fashion_product_size_field', 5);
 function overview_fashion_mobile_order_note() {
-    echo '<p class="of-mobile-order-note">' . esc_html__('অর্ডার কনফার্ম করতে নিচের “অর্ডার কনফার্ম করুন” বাটনে ক্লিক করুন।', 'overview-fashion') . '</p>';
+    echo '<a class="of-mobile-order-note" href="' . esc_url(wc_get_checkout_url()) . '">' . esc_html__('অর্ডার কনফার্ম করতে নিচের “অর্ডার কনফার্ম করুন” বাটনে ক্লিক করুন।', 'overview-fashion') . '</a>';
 }
 add_action('woocommerce_after_add_to_cart_button', 'overview_fashion_mobile_order_note');
 add_action('woocommerce_before_add_to_cart_button', function () {
@@ -175,8 +195,8 @@ function overview_fashion_add_new_product_admin_field() {
     echo '<div class="options_group">';
     woocommerce_wp_checkbox(array(
         'id' => '_of_is_new_product',
-        'label' => __('Show in New Products section', 'overview-fashion'),
-        'description' => __('Display this product in the homepage New Products section.', 'overview-fashion'),
+        'label' => __('Show in New Products sections', 'overview-fashion'),
+        'description' => __('Display this product in the homepage, checkout, thank-you, and product recommendation sections.', 'overview-fashion'),
     ));
     echo '</div>';
 }
@@ -222,7 +242,9 @@ function overview_fashion_render_frequently_bought_together($product) {
     $totals = overview_fashion_product_cart_size_totals($product->get_id());
     $current_size = isset($_REQUEST['of_size']) ? sanitize_text_field(wp_unslash($_REQUEST['of_size'])) : 'M';
     if (!isset($totals[$current_size])) { $current_size = 'M'; }
-    echo '<section class="of-fbt" data-of-fbt data-current-product="' . esc_attr($product->get_id()) . '"><h2>' . esc_html(get_theme_mod('of_fbt_heading', 'আপনি কি এখান থেকে কিছু নিতে চান?')) . '</h2><div class="of-fbt-items">';
+    $fbt_heading = get_theme_mod('of_fbt_heading', 'নতুন প্রোডাক্টে ডিসকাউন্ট অফার চলছে!');
+    if ($fbt_heading === 'আপনি কি এখান থেকে কিছু নিতে চান?' || $fbt_heading === 'নতুন প্রোডাক্টে discount অফার চলছে!') { $fbt_heading = 'নতুন প্রোডাক্টে ডিসকাউন্ট অফার চলছে!'; }
+    echo '<section class="of-fbt" data-of-fbt data-current-product="' . esc_attr($product->get_id()) . '"><h2>' . esc_html($fbt_heading) . '</h2><div class="of-fbt-items">';
     foreach ($items as $item) {
         $image_id = $item->get_image_id();
         $image = $image_id ? wp_get_attachment_image($image_id, 'woocommerce_thumbnail', false, array('loading' => 'lazy')) : wc_placeholder_img('woocommerce_thumbnail');
@@ -328,7 +350,7 @@ function overview_fashion_single_product_discount_badge($product) {
 function overview_fashion_render_product_recommendations($product) {
     if (!$product instanceof WC_Product) { return; }
     $product_id = $product->get_id();
-    $recommendations = wc_get_products(array('status' => 'publish', 'limit' => 8, 'orderby' => 'date', 'order' => 'DESC', 'exclude' => array($product_id)));
+    $recommendations = wc_get_products(array('status' => 'publish', 'limit' => 8, 'orderby' => 'date', 'order' => 'DESC', 'exclude' => array($product_id), 'meta_query' => array(array('key' => '_of_is_new_product', 'value' => 'yes'))));
     if (!$recommendations) { return; }
     echo '<section class="of-similar-products of-recommendation-section"><h2>' . esc_html__('Latest Products', 'overview-fashion') . '<span class="of-similar-ornament" aria-hidden="true"><svg viewBox="0 0 120 18"><path d="M3 9h34c5 0 7-2 10-5 2-2 5-2 7 0l6 5 6-5c2-2 5-2 7 0 3 3 5 5 10 5h34M3 9h34c5 0 7 2 10 5 2 2 5 2 7 0l6-5 6 5c2 2 5 2 7 0 3-3 5-5 10-5h34"/><path d="M53 9c0-3 3-6 7-6s7 3 7 6-3 6-7 6-7-3-7-6Zm3 0c2-2 4-2 6 0-2 2-4 2-6 0Z"/><circle cx="60" cy="9" r="1"/></svg></span></h2><div class="of-products">';
     foreach ($recommendations as $recommended_product) { overview_fashion_product_card($recommended_product); }
@@ -447,7 +469,7 @@ function overview_fashion_customize_register($wp_customize) {
     }
     $wp_customize->add_section('overview_fashion_fbt_text', array('title' => __('Frequently bought together text', 'overview-fashion'), 'priority' => 36));
     $fbt_texts = array(
-        'of_fbt_heading' => array(__('Section heading', 'overview-fashion'), 'আপনি কি এখান থেকে কিছু নিতে চান?'),
+        'of_fbt_heading' => array(__('Section heading', 'overview-fashion'), 'নতুন প্রোডাক্টে ডিসকাউন্ট অফার চলছে!'),
         'of_fbt_total_label' => array(__('Total label', 'overview-fashion'), 'Total:'),
         'of_fbt_buy_label' => array(__('Buy button text', 'overview-fashion'), 'পণ্যগুলো কিনুন'),
         'of_fbt_size_placeholder' => array(__('Size placeholder', 'overview-fashion'), 'Choose a size'),
@@ -457,6 +479,9 @@ function overview_fashion_customize_register($wp_customize) {
         $wp_customize->add_setting($setting, array('default' => $data[1], 'sanitize_callback' => 'sanitize_text_field', 'transport' => 'refresh'));
         $wp_customize->add_control($setting, array('label' => $data[0], 'section' => 'overview_fashion_fbt_text', 'type' => 'text'));
     }
+    $wp_customize->add_section('overview_fashion_thankyou_offer', array('title' => __('Thank-you page offer', 'overview-fashion'), 'priority' => 36));
+    $wp_customize->add_setting('of_thankyou_offer_heading', array('default' => 'এখান থেকে যেকোনো প্রোডাক্ট কিনলেই পাচ্ছেন কমপক্ষে ২০% ডিসকাউন্ট', 'sanitize_callback' => 'sanitize_text_field', 'transport' => 'refresh'));
+    $wp_customize->add_control('of_thankyou_offer_heading', array('label' => __('Offer heading', 'overview-fashion'), 'section' => 'overview_fashion_thankyou_offer', 'type' => 'text'));
     $wp_customize->add_section('overview_fashion_delivery', array('title' => __('Delivery offer', 'overview-fashion'), 'priority' => 37));
     $wp_customize->add_setting('of_multi_item_free_shipping', array('default' => true, 'sanitize_callback' => 'rest_sanitize_boolean', 'transport' => 'refresh'));
     $wp_customize->add_control('of_multi_item_free_shipping', array('label' => __('Free delivery when cart has 2 or more items', 'overview-fashion'), 'section' => 'overview_fashion_delivery', 'type' => 'checkbox'));
