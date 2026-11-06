@@ -259,7 +259,7 @@ function overview_fashion_render_frequently_bought_together($product) {
                 $price_content = '<span class="of-fbt-current-price">' . wc_price($current_display) . '</span><span class="of-fbt-old-price"><small class="of-fbt-discount">-' . esc_html($discount) . '%</small><del>' . wc_price($regular_display) . '</del></span>';
             }
         }
-        echo '<label class="of-fbt-item"><input type="checkbox" class="of-fbt-check" value="' . esc_attr($item->get_id()) . '" data-price="' . esc_attr(wc_get_price_to_display($item)) . '"><span class="of-fbt-thumb">' . $image . '</span><span class="of-fbt-info"><strong>' . esc_html($item->get_name()) . '</strong><select aria-label="' . esc_attr(sprintf(__('Size for %s', 'overview-fashion'), $item->get_name())) . '"><option value="" selected disabled>' . esc_html(get_theme_mod('of_fbt_size_placeholder', 'Choose a size')) . '</option><option value="M">M</option><option value="L">L</option><option value="XL">XL</option></select></span><span class="of-fbt-price">' . $price_content . '</span></label>';
+        echo '<label class="of-fbt-item"><input type="checkbox" class="of-fbt-check" value="' . esc_attr($item->get_id()) . '" data-price="' . esc_attr(wc_get_price_to_display($item)) . '"><span class="of-fbt-thumb">' . $image . '</span><span class="of-fbt-info"><strong>' . esc_html($item->get_name()) . '</strong><select aria-label="' . esc_attr(sprintf(__('Size for %s', 'overview-fashion'), $item->get_name())) . '"><option value="" selected disabled>' . esc_html__('সাইজ নির্বাচন করুন', 'overview-fashion') . '</option><option value="M">M</option><option value="L">L</option><option value="XL">XL</option></select></span><span class="of-fbt-price">' . $price_content . '</span></label>';
     }
     echo '</div><div class="of-fbt-footer"><strong>' . esc_html(get_theme_mod('of_fbt_total_label', 'Total:')) . ' <span data-of-fbt-total data-of-fbt-current-total data-base-m="' . esc_attr($totals['M']) . '" data-base-l="' . esc_attr($totals['L']) . '" data-base-xl="' . esc_attr($totals['XL']) . '">' . wp_kses_post(wc_price($totals[$current_size])) . '</span></strong><button class="of-button" type="button" data-of-fbt-add>' . esc_html(get_theme_mod('of_fbt_buy_label', 'পণ্যগুলো কিনুন')) . '</button></div><p class="of-fbt-error" role="alert" hidden></p></section>';
 }
@@ -375,8 +375,20 @@ function overview_fashion_products($args = array()) {
 
 function overview_fashion_home_product_section($title, $args, $url = '', $heading_tag = 'h2') {
     if (!in_array($heading_tag, array('h1', 'h2'), true)) { $heading_tag = 'h2'; }
-    $products = class_exists('WooCommerce') ? wc_get_products(wp_parse_args($args, array('status' => 'publish', 'limit' => -1, 'orderby' => 'date', 'order' => 'DESC', 'return' => 'objects'))) : array();
+    $query_args = wp_parse_args($args, array('status' => 'publish', 'limit' => -1, 'orderby' => 'date', 'order' => 'DESC', 'return' => 'objects'));
+    // Keep homepage sections newest-first even when a caller supplies different sort args.
+    $query_args['orderby'] = 'date';
+    $query_args['order'] = 'DESC';
+    $query_args['return'] = 'objects';
+    $products = class_exists('WooCommerce') ? wc_get_products($query_args) : array();
     if (!$products) { return; }
+    usort($products, function ($a, $b) {
+        $a_date = $a->get_date_created();
+        $b_date = $b->get_date_created();
+        $a_timestamp = $a_date ? $a_date->getTimestamp() : 0;
+        $b_timestamp = $b_date ? $b_date->getTimestamp() : 0;
+        return $a_timestamp === $b_timestamp ? $b->get_id() - $a->get_id() : $b_timestamp <=> $a_timestamp;
+    });
     echo '<section class="of-home-product-section"><div class="of-home-section-heading"><' . $heading_tag . '>' . esc_html($title) . '</' . $heading_tag . '>';
     if ($url) { echo '<a href="' . esc_url($url) . '">' . esc_html__('View all', 'overview-fashion') . ' <span aria-hidden="true">→</span></a>'; }
     echo '</div>';
@@ -472,7 +484,6 @@ function overview_fashion_customize_register($wp_customize) {
         'of_fbt_heading' => array(__('Section heading', 'overview-fashion'), 'নতুন প্রোডাক্টে ডিসকাউন্ট অফার চলছে!'),
         'of_fbt_total_label' => array(__('Total label', 'overview-fashion'), 'Total:'),
         'of_fbt_buy_label' => array(__('Buy button text', 'overview-fashion'), 'পণ্যগুলো কিনুন'),
-        'of_fbt_size_placeholder' => array(__('Size placeholder', 'overview-fashion'), 'Choose a size'),
         'of_fbt_size_required_label' => array(__('Select size button text', 'overview-fashion'), 'সাইজ নির্বাচন করুন'),
     );
     foreach ($fbt_texts as $setting => $data) {
@@ -666,7 +677,7 @@ function overview_fashion_cart_fragments($fragments) {
     $fragments['[data-of-cart-count]'] = ob_get_clean();
     ob_start(); overview_fashion_mini_cart_contents();
     $fragments['[data-of-cart-panel-content]'] = ob_get_clean();
-    ob_start(); ?><span class="of-mobile-cart-total"><?php echo wp_kses_post(WC()->cart->get_cart_subtotal()); ?></span><?php
+    ob_start(); ?><span class="of-mobile-cart-total" data-of-mobile-cart-total><?php echo wp_kses_post(WC()->cart->get_cart_subtotal()); ?></span><?php
     $fragments['[data-of-mobile-cart-total]'] = ob_get_clean();
     ob_start(); ?><strong class="of-cart-total-value"><?php echo wp_kses_post(WC()->cart->get_cart_subtotal()); ?></strong><?php
     $fragments['.of-cart-total-value'] = ob_get_clean();
@@ -795,8 +806,10 @@ function overview_fashion_checkout_fields($fields) {
     $fields['billing']['billing_phone']['label'] = __('মোবাইল নম্বর', 'overview-fashion');
     $fields['billing']['billing_phone']['placeholder'] = __('01XXXXXXXXX', 'overview-fashion');
     $fields['billing']['billing_phone']['priority'] = 20;
-    $fields['billing']['billing_phone']['required'] = true;
-    $fields['billing']['billing_phone']['custom_attributes'] = array('maxlength' => '11', 'inputmode' => 'numeric', 'pattern' => '01[3-9][0-9]{8}', 'autocomplete' => 'tel');
+    $fields['billing']['billing_phone']['required'] = false;
+    $fields['billing']['billing_phone']['type'] = 'text';
+    $fields['billing']['billing_phone']['custom_attributes'] = array('autocomplete' => 'tel');
+    unset($fields['billing']['billing_phone']['validate']);
     $fields['billing']['billing_address_1']['label'] = __('আপনার সম্পূর্ণ ঠিকানা', 'overview-fashion');
     $fields['billing']['billing_address_1']['placeholder'] = __('বাসা, সড়ক, এলাকা ও জেলা লিখুন', 'overview-fashion');
     $fields['billing']['billing_address_1']['priority'] = 30;
@@ -857,10 +870,6 @@ function overview_fashion_save_delivery_area($order, $data) {
 add_action('woocommerce_checkout_create_order', 'overview_fashion_save_delivery_area', 20, 2);
 
 function overview_fashion_validate_delivery_area($data, $errors) {
-    $phone = isset($data['billing_phone']) ? preg_replace('/\D+/', '', (string) $data['billing_phone']) : '';
-    if (!preg_match('/^01[3-9][0-9]{8}$/', $phone)) {
-        $errors->add('billing_phone', __('Enter a valid 11-digit Bangladesh mobile number.', 'overview-fashion'));
-    }
     $area = isset($_POST['of_delivery_area']) ? sanitize_key(wp_unslash($_POST['of_delivery_area'])) : '';
     if (!in_array($area, array('dhaka', 'outside'), true)) {
         $errors->add('of_delivery_area', __('Please choose a delivery area.', 'overview-fashion'));
