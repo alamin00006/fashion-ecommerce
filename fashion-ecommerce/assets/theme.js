@@ -328,7 +328,7 @@
         refreshFbtTotals();
         bundle.querySelector('.of-mobile-order-note')?.classList.add('is-visible');
         cartBar?.classList.add('is-visible');
-        window.jQuery?.(document.body).trigger('wc_fragment_refresh');
+        if (window.jQuery) window.jQuery(document.body).trigger('added_to_cart', [result.data.fragments || {}, result.data.cart_hash, window.jQuery(button)]);
       } catch (error) {
         if (errorNode) { errorNode.textContent = error.message; errorNode.hidden = false; }
       } finally {

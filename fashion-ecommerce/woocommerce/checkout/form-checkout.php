@@ -58,7 +58,7 @@ do_action('woocommerce_before_checkout_form', $checkout);
         <div id="order_review" class="woocommerce-checkout-review-order"><?php woocommerce_order_review(); ?></div>
         <?php if ($checkout_latest_products) : ?>
           <section class="of-checkout-latest" data-of-checkout-latest>
-            <div class="of-checkout-latest-heading"><h2>নতুন প্রোডাক্টে অফার চলছে</h2><div><button type="button" data-of-latest-prev aria-label="<?php esc_attr_e('Previous products', 'overview-fashion'); ?>">‹</button><button type="button" data-of-latest-next aria-label="<?php esc_attr_e('Next products', 'overview-fashion'); ?>">›</button></div></div>
+            <div class="of-checkout-latest-heading"><h2>নতুন প্রোডাক্টে অফার চলছে!!!</h2><div><button type="button" data-of-latest-prev aria-label="<?php esc_attr_e('Previous products', 'overview-fashion'); ?>">‹</button><button type="button" data-of-latest-next aria-label="<?php esc_attr_e('Next products', 'overview-fashion'); ?>">›</button></div></div>
             <div class="of-checkout-latest-track" data-of-latest-track>
               <?php foreach ($checkout_latest_products as $latest_product) : ?>
                 <?php
@@ -75,7 +75,7 @@ do_action('woocommerce_before_checkout_form', $checkout);
                   <a class="of-checkout-latest-image" href="<?php echo esc_url(get_permalink($latest_product->get_id())); ?>"><?php echo wp_kses_post($latest_product->get_image('woocommerce_thumbnail', array('loading' => 'lazy'))); ?><?php if ($latest_discount > 0) : ?><span class="of-checkout-latest-discount">-<?php echo esc_html($latest_discount); ?>%</span><?php endif; ?></a>
                   <a class="of-checkout-latest-name" href="<?php echo esc_url(get_permalink($latest_product->get_id())); ?>"><?php echo esc_html($latest_product->get_name()); ?></a>
                   <div class="of-checkout-latest-price"><?php echo wp_kses_post($latest_product->get_price_html()); ?></div>
-                  <select class="of-checkout-latest-size" aria-label="<?php echo esc_attr(sprintf(__('Size for %s', 'overview-fashion'), $latest_product->get_name())); ?>"><option value="" selected disabled><?php esc_html_e('Choose a size', 'overview-fashion'); ?></option><option value="M">M</option><option value="L">L</option><option value="XL">XL</option></select>
+                  <select class="of-checkout-latest-size" aria-label="<?php echo esc_attr(sprintf(__('Size for %s', 'overview-fashion'), $latest_product->get_name())); ?>"><option value="" selected disabled><?php esc_html_e('সাইজ নির্বাচন করুন', 'overview-fashion'); ?></option><option value="M">M</option><option value="L">L</option><option value="XL">XL</option></select>
                   <button class="of-button of-checkout-latest-add" type="button" data-of-checkout-latest-add><?php echo in_array($latest_product->get_id(), $checkout_cart_product_ids, true) ? esc_html__('আরও কিনুন', 'overview-fashion') : esc_html__('এটি কিনুন', 'overview-fashion'); ?></button>
                 </article>
               <?php endforeach; ?>

@@ -16,8 +16,8 @@ $of_catalog_args = array(
     'status' => 'publish',
     'limit' => -1,
     'category' => array($of_category->slug),
-    'orderby' => 'menu_order',
-    'order' => 'ASC',
+    'orderby' => 'date',
+    'order' => 'DESC',
 );
 if ($of_sort === 'price') { $of_catalog_args['orderby'] = 'price'; $of_catalog_args['order'] = 'ASC'; }
 if ($of_sort === 'price-desc') { $of_catalog_args['orderby'] = 'price'; $of_catalog_args['order'] = 'DESC'; }
